@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>KOF P0 · WebRTC P2P 诊断</title>
+<style>body{font:15px/1.55 system-ui,-apple-system,"Microsoft YaHei",sans-serif;background:#101823;color:#edf2fa;margin:0;padding:18px}main{max-width:850px;margin:auto}h1{font-size:24px}h2{font-size:18px}section{border:1px solid #34455c;border-radius:12px;background:#172334;padding:15px;margin:12px 0}.warn{color:#ffc57d}.ok{color:#93e1b1}button{background:#3578c9;border:none;color:#fff;border-radius:7px;padding:9px 12px;margin:5px 8px 5px 0;cursor:pointer}button:focus{outline:2px solid #ffe08a}button:disabled{opacity:.5}textarea{display:block;box-sizing:border-box;width:100%;min-height:125px;background:#0d1824;color:#dbf4e9;border:1px solid #506479;border-radius:6px;padding:8px;font:12px monospace}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0d1824;padding:12px;border-radius:7px}small{color:#a2b9cc}strong{font-weight:650}</style></head>
+<body><main><h1>浏览器 P2P 连通性诊断（不含游戏或 ROM）</h1>
+<p>用途：核实 Windows、华为 Android、iPhone 之间 WebRTC DataChannel 是否直连，记录建连状态、RTT 与超时。<strong>不测格斗游戏帧率或 Rollback 手感。</strong></p>
+<p class="warn">仅供可信测试者交换信令文本：其中可能含网络地址信息；不要把信令粘贴到公开网站。只有 STUN，没有 TURN，某些移动网络可能无法连接。</p>
+<section><h2>1. 两台设备手动交换信令</h2>
+<button id="makeOffer">设备 A：生成邀请 Offer</button><button id="makeAnswer">设备 B：读取邀请并生成 Answer</button><button id="applyAnswer">设备 A：读取 Answer 并连接</button><button id="close">结束连接</button>
+<label for="remote">对方发送的信令（设备 B 粘贴 Offer；设备 A 粘贴 Answer）</label><textarea id="remote" placeholder="把对方复制来的 JSON 粘贴在这里。"></textarea>
+<label for="local">本设备产生的信令（完整复制给另一设备）</label><textarea id="local" readonly></textarea><button id="copy">复制本机信令</button>
+<small>步骤：A 生成 Offer → 发给 B → B 粘贴并生成 Answer → 发回 A → A 粘贴 Answer 并连接。手动模式不需要登录，但需要浏览器支持 WebRTC。</small></section>
+<section><h2>2. 当前连接与探针指标</h2><p id="state">未连接</p><pre id="metrics">未开始采样</pre><p><small>RTT 仅计算 DataChannel ping/pong 往返，超时表示应用层探针 3 秒内未返回，不等同于底层网络真实丢包率。采样每 250ms 一次。</small></p></section>
+<section><h2>3. 诊断日志</h2><pre id="log">本页不会记录 IP、信令全文和账户信息。\n</pre></section>
+<script>
+'use strict';
+const el = (id) => document.getElementById(id);
+let pc = null, channel = null, timer = null, statsTimer = null, connectAt = 0;
+let sequence = 0, sent = 0, received = 0, timeouts = 0;
+let samples = [], pending = new Map();
+function note(msg) { const node=el('log'); node.textContent += new Date().toLocaleTimeString()+' '+msg+'\n'; node.textContent=node.textContent.slice(-5500); }
+function status(msg) { el('state').textContent = msg; note(msg); }
+function stop() {
+  clearInterval(timer); clearInterval(statsTimer); timer=null; statsTimer=null;
+  if(channel) {try{channel.close();}catch(e){} } channel=null;
+  if(pc) {try{pc.close();}catch(e){} } pc=null;
+  pending.clear();
+  status('已断开');
+}
+function setupPeer() {
+  stop(); sent=0;received=0;timeouts=0;sequence=0;samples=[];
+  pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  connectAt=performance.now();
+  pc.onconnectionstatechange=()=>status('Peer: '+pc.connectionState+' / ICE: '+pc.iceConnectionState);
+  pc.oniceconnectionstatechange=()=>status('Peer: '+pc.connectionState+' / ICE: '+pc.iceConnectionState);
+  pc.ondatachannel=(e)=>bindChannel(e.channel);
+  return pc;
+}
+function bindChannel(ch) {
+  channel=ch;
+  channel.onopen=()=>{status('DataChannel open；建连 '+Math.round(performance.now()-connectAt)+' ms');
+    timer=setInterval(ping,250);statsTimer=setInterval(report,1000);ping();report();};
+  channel.onclose=()=>status('DataChannel 已关闭');
+  channel.onerror=()=>note('DataChannel 出错');
+  channel.onmessage=(event)=>{let m;try{m=JSON.parse(event.data);}catch(e){return;}
+    if(m.kind==='ping'){if(channel.readyState==='open')channel.send(JSON.stringify({kind:'pong',seq:m.seq}));return;}
+    if(m.kind==='pong' && pending.has(m.seq)) {const then=pending.get(m.seq);pending.delete(m.seq);received++;samples.push(performance.now()-then);if(samples.length>250)samples.shift();}
+  };
+}
+function ping(){
+  const now=performance.now();
+  for(const [n,t] of pending) if(now-t>3000){pending.delete(n);timeouts++;}
+  if(!channel || channel.readyState!=='open')return;
+  const n=++sequence;pending.set(n,now);sent++;
+  try{channel.send(JSON.stringify({kind:'ping',seq:n}));}catch(e){pending.delete(n);timeouts++;}
+}
+async function waitICE(p){
+  if(p.iceGatheringState==='complete')return;
+  await new Promise((resolve)=>{let finished=false;let tm;const done=()=>{if(finished)return;finished=true;clearTimeout(tm);p.removeEventListener('icegatheringstatechange',check);resolve();};
+    const check=()=>{if(p.iceGatheringState==='complete')done();};p.addEventListener('icegatheringstatechange',check);tm=setTimeout(()=>{note('ICE 候选收集 15 秒未完成：手动信令可能不足');done();},15000);check();});
+}
+function parseRemote(type){let x;try{x=JSON.parse(el('remote').value);}catch(e){throw new Error('信令不是合法 JSON');}if(x.type!==type||typeof x.sdp!=='string')throw new Error('需要 '+type+' 格式的信令');return x;}
+async function doOffer(){const p=setupPeer();bindChannel(p.createDataChannel('probe',{ordered:false,maxRetransmits:0}));const offer=await p.createOffer();await p.setLocalDescription(offer);await waitICE(p);el('local').value=JSON.stringify(p.localDescription);status('已生成 Offer；复制给设备 B');}
+async function doAnswer(){const remote=parseRemote('offer');const p=setupPeer();await p.setRemoteDescription(remote);const ans=await p.createAnswer();await p.setLocalDescription(ans);await waitICE(p);el('local').value=JSON.stringify(p.localDescription);status('已生成 Answer；复制给设备 A');}
+async function applyAnswer(){if(!pc)throw new Error('请先在设备 A 生成 Offer');await pc.setRemoteDescription(parseRemote('answer'));status('已导入 Answer，等待建立 DataChannel');}
+function quantile(a,f){if(!a.length)return '-';const b=[...a].sort((x,y)=>x-y);return Math.round(b[Math.min(b.length-1,Math.ceil(f*b.length)-1)])+' ms';}
+async function report(){if(!pc)return;let ice='未知';try{const all=await pc.getStats();let pair;all.forEach(x=>{if(x.type==='candidate-pair' && x.state==='succeeded' && x.nominated)pair=x;});if(pair){const a=all.get(pair.localCandidateId),b=all.get(pair.remoteCandidateId);ice=(a?.candidateType||'?')+' ↔ '+(b?.candidateType||'?');}}catch(e){ice='当前浏览器未提供所选候选对';}
+  el('metrics').textContent='WebRTC: '+pc.connectionState+' / '+pc.iceConnectionState+'\n候选对: '+ice+'\n采样发送: '+sent+' | 返回: '+received+' | 超时(>3s): '+timeouts+' | 未决: '+pending.size+'\n最近 RTT p50: '+quantile(samples,.5)+' | p95: '+quantile(samples,.95)+' | 最大: '+quantile(samples,1)+'\n样本数: '+samples.length+'；此处是网络探针，不是游戏手感';}
+function action(fn){return async()=>{try{await fn();}catch(e){status('失败：'+e.message);}};}
+el('makeOffer').onclick=action(doOffer);el('makeAnswer').onclick=action(doAnswer);el('applyAnswer').onclick=action(applyAnswer);el('close').onclick=stop;
+el('copy').onclick=action(async()=>{if(!el('local').value)throw new Error('尚未生成信令');if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(el('local').value);}else{el('local').select();document.execCommand('copy');}note('本机信令已复制；仅发给可信测试者');});
+if(!('RTCPeerConnection' in window))status('该浏览器不支持 WebRTC');
+</script>
+</main></body></html>

@@ -5,7 +5,7 @@
 <p>用途：核实 Windows、华为 Android、iPhone 之间 WebRTC DataChannel 是否直连，记录建连状态、RTT 与超时。<strong>不测格斗游戏帧率或 Rollback 手感。</strong></p>
 <p class="warn">仅供可信测试者交换信令文本：其中可能含网络地址信息；不要把信令粘贴到公开网站。只有 STUN，没有 TURN，某些移动网络可能无法连接。</p>
 <section><h2>1. 两台设备手动交换信令</h2>
-<button id="makeOffer">设备 A：生成邀请 Offer</button><button id="makeAnswer">设备 B：读取邀请并生成 Answer</button><button id="applyAnswer">设备 A：读取 Answer 并连接</button><button id="close">结束连接</button>
+<label for="stun">STUN 服务器（可修改，用于排除单一 STUN 服务不可达的影响）</label><input id="stun" value="stun:stun.l.google.com:19302" style="box-sizing:border-box;width:100%;padding:9px;background:#0d1824;color:#edf2fa;border:1px solid #506479;border-radius:6px;margin:6px 0"/><button id="makeOffer">设备 A：生成邀请 Offer</button><button id="makeAnswer">设备 B：读取邀请并生成 Answer</button><button id="applyAnswer">设备 A：读取 Answer 并连接</button><button id="close">结束连接</button>
 <label for="remote">对方发送的信令（设备 B 粘贴 Offer；设备 A 粘贴 Answer）</label><textarea id="remote" placeholder="把对方复制来的 JSON 粘贴在这里。"></textarea>
 <label for="local">本设备产生的信令（完整复制给另一设备）</label><textarea id="local" readonly></textarea><button id="copy">复制本机信令</button>
 <small>步骤：A 生成 Offer → 发给 B → B 粘贴并生成 Answer → 发回 A → A 粘贴 Answer 并连接。手动模式不需要登录，但需要浏览器支持 WebRTC。</small></section>
@@ -28,7 +28,7 @@ function stop() {
 }
 function setupPeer() {
   stop(); sent=0;received=0;timeouts=0;sequence=0;samples=[];
-  pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  const stun = el('stun').value.trim(); if(!/^stuns?:[^\s]+$/i.test(stun))throw new Error('STUN 地址格式不正确'); pc = new RTCPeerConnection({iceServers:[{urls:stun}]});
   connectAt=performance.now();
   pc.onconnectionstatechange=()=>status('Peer: '+pc.connectionState+' / ICE: '+pc.iceConnectionState);
   pc.oniceconnectionstatechange=()=>status('Peer: '+pc.connectionState+' / ICE: '+pc.iceConnectionState);

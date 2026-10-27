@@ -1,0 +1,42 @@
+name: P0 V2 real WebRTC dual-channel browser
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-v2-browser.yml'
+      - 'lab/v2_datachannels_browser.mjs'
+      - 'src/netcode/**'
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-v2-dual-channel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout only test repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned browser testing dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+          node --check lab/v2_datachannels_browser.mjs
+      - name: Establish two real WebRTC DataChannels and recover dropped input frames
+        run: node lab/v2_datachannels_browser.mjs
+      - name: Evidence boundaries
+        if: always()
+        run: |
+          echo 'Actual independent Chromium browser contexts on a single runner, host-only WebRTC. One and five synthetic INPUT packets dropped on unreliable fast channel, repaired by reliable control NACK/resend.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Does NOT prove Neon Fist game integration, remote NAT/STUN/TURN, commercial match fairness, or physical Android/iOS support.' >> "$GITHUB_STEP_SUMMARY"

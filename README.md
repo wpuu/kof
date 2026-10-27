@@ -35,3 +35,13 @@
 ## 执行任务
 - [P0-001｜隔离复测 Neon Fist](https://github.com/wpuu/kof/issues/1)
 - [P0-002｜PC、华为、iPhone 跨端真机实验](https://github.com/wpuu/kof/issues/2)
+
+## 2026-10-27 最新执行成果
+- [本轮实测状态与未完成项](docs/STATUS_2026-10-27.md)
+- [原项目真实测试与实际安全问题](docs/P0-001_RESULT.md)
+- [管理员接口安全补丁与 280 项通过证据](docs/P0-003_ADMIN_GUARD_RESULT.md)
+- [全部 GitHub Actions 运行记录](docs/P0_CI_EVIDENCE_2026-10-27.md)
+- [Issue #3 管理员 RBAC / 生产鉴权](https://github.com/wpuu/kof/issues/3)
+- [Issue #4 自然网络回滚/同步专项](https://github.com/wpuu/kof/issues/4)
+
+**注意：自动化浏览器/同机 P2P 成功 ≠ 安卓/iPhone 真机异网成功；受控恢复 ≠ 自然延迟环境的回滚能力验证。**

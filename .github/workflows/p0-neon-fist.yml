@@ -1,0 +1,63 @@
+name: P0 Neon Fist upstream verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-neon-fist.yml'
+
+permissions: {}
+
+jobs:
+  upstream-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      CI: 'true'
+    steps:
+      - name: Configure Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone pinned public source (no credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          cd upstream
+          git checkout --detach "$UPSTREAM_SHA"
+          test "$(git rev-parse HEAD)" = "$UPSTREAM_SHA"
+          echo "UPSTREAM_SHA=$UPSTREAM_SHA" >> "$GITHUB_STEP_SUMMARY"
+          node --version
+          npm --version
+      - name: Verify repository license and package scripts
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f LICENSE && grep -q 'MIT License' LICENSE
+          node --input-type=module -e "import p from './package.json' with { type: 'json' }; if (p.scripts?.test !== 'node tests/run.js') process.exit(2); console.log('license metadata:', p.license, '; scripts:', p.scripts)"
+          echo "The upstream MIT LICENSE and package.json ISC field do not match; manual rights review remains required." >> "$GITHUB_STEP_SUMMARY"
+      - name: Install exact locked dependencies without lifecycle scripts
+        working-directory: upstream
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run original upstream tests
+        working-directory: upstream
+        run: npm test
+      - name: Syntax-check game and server entrypoints
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check src/server/index.js
+          node --check src/server/signaling.js
+          node --check src/server/liveopsRoutes.js
+          node --check tests/run.js
+      - name: Report strict scope
+        if: always()
+        shell: bash
+        run: |
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "This run covers original upstream Node tests and syntax only." >> "$GITHUB_STEP_SUMMARY"
+          echo "NOT tested: mobile browsers, actual PC-to-phone P2P sessions, user input responsiveness, security of admin APIs, rights to commercial use of all assets, or Chinese online game licensing." >> "$GITHUB_STEP_SUMMARY"

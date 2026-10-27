@@ -14,6 +14,10 @@ const gameURL = process.env.NEON_URL || 'http://127.0.0.1:18789/';
 // ArrayBuffer before delaying it; otherwise this instrument would corrupt data.
 const transportDelayMs = Number(process.env.NEON_SEND_DELAY_MS || '0');
 const dropFirstHostNonzero = process.env.NEON_DROP_FIRST_NONZERO === 'host';
+const dropBurstCount = Number(process.env.NEON_DROP_BURST_COUNT || '1');
+if (!Number.isInteger(dropBurstCount) || dropBurstCount < 1 || dropBurstCount > 8) {
+  throw new Error('NEON_DROP_BURST_COUNT must be 1..8');
+}
 const expectDesync = process.env.NEON_EXPECT_DESYNC === '1';
 if (expectDesync && !dropFirstHostNonzero) throw new Error('Expected-desync mode requires host drop fault');
 
@@ -24,7 +28,9 @@ async function configureSimulatedDelay(context, shouldDrop) {
   if (!transportDelayMs && !shouldDrop) return;
   await context.addInitScript(({ ms, drop }) => {
     const originalSend = RTCDataChannel.prototype.send;
-    window.__p0FaultCounters = { gameplaySent: 0, dropped: 0, droppedFrame: null };
+    window.__p0FaultCounters = {
+      gameplaySent: 0, dropped: 0, droppedFrame: null, firstDroppedFrame: null
+    };
     RTCDataChannel.prototype.send = function (buffer) {
       if (buffer instanceof ArrayBuffer && buffer.byteLength >= 9 &&
           buffer.byteLength <= 64 && this.label === 'fight') {
@@ -32,10 +38,12 @@ async function configureSimulatedDelay(context, shouldDrop) {
         const view = new DataView(immutable);
         const mask = view.getUint8(4);
         window.__p0FaultCounters.gameplaySent++;
-        if (drop && mask !== 0 && window.__p0FaultCounters.dropped === 0) {
-          window.__p0FaultCounters.dropped = 1;
+        if (drop && mask !== 0 && window.__p0FaultCounters.dropped < burst) {
+          if (!window.__p0FaultCounters.dropped)
+            window.__p0FaultCounters.firstDroppedFrame = view.getInt32(0, true);
+          window.__p0FaultCounters.dropped++;
           window.__p0FaultCounters.droppedFrame = view.getInt32(0, true);
-          return; // deliberately simulate exactly one lost input packet
+          return; // simulate bounded consecutive input packet loss
         }
         if (ms) {
           const channel = this;
@@ -48,7 +56,7 @@ async function configureSimulatedDelay(context, shouldDrop) {
       }
       return originalSend.call(this, buffer);
     };
-  }, { ms: transportDelayMs, drop: !!shouldDrop });
+  }, { ms: transportDelayMs, drop: !!shouldDrop, burst: dropBurstCount });
 }
 
 const executablePath = process.env.CHROME_BIN ||
@@ -229,8 +237,9 @@ async function testCase(browser, { name, guestTouch }) {
     // No inputs are held during this quiet settle period.
     const synchronized = await checkpointAtSameFrame(a, b);
     const faultInfo = await a.evaluate(() => window.__p0FaultCounters || null);
-    if (dropFirstHostNonzero && faultInfo?.dropped !== 1) {
-      throw new Error('Test invalid: expected first nonzero host input packet not dropped');
+    if (dropFirstHostNonzero && faultInfo?.dropped !== dropBurstCount) {
+      throw new Error('Test invalid: expected ' + dropBurstCount +
+        ' nonzero host packets to be dropped, observed ' + faultInfo?.dropped);
     }
     if (expectDesync) {
       if (!synchronized.sameFrame) {
@@ -255,7 +264,8 @@ async function testCase(browser, { name, guestTouch }) {
       faultInfo: faultInfo ? {
         gameplaySent: faultInfo.gameplaySent,
         dropped: faultInfo.dropped,
-        droppedFrame: faultInfo.droppedFrame
+        firstDroppedFrame: faultInfo.firstDroppedFrame,
+        lastDroppedFrame: faultInfo.droppedFrame
       } : null,
       absolutePlayerPositionDelta: {
         p1: Number(Math.abs(afterGuest[0].p1x - afterGuest[1].p1x).toFixed(2)),
@@ -311,6 +321,7 @@ try {
     status: expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS',
     scope: 'actual game between two independent Chromium contexts on one CI host',
     intentionalHostPacketLoss: dropFirstHostNonzero,
+    intentionalHostPacketLossCount: dropFirstHostNonzero ? dropBurstCount : 0,
     artificialSendDelayMsPerDirection: transportDelayMs,
     chromeVersion: browser.version(), results,
     notVerified: ['real devices', 'cross-city/cross-carrier',

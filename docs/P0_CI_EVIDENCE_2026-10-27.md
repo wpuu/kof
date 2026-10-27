@@ -37,3 +37,12 @@
 - `lab/p2p_probe.html`
 
 真实设备的下一轮测试继续按 `docs/P0_ACCEPTANCE.md` 执行。
+## 追加运行 2026-10-27
+
+| Run | 结果 |
+|---|---|
+| [40457833434](https://github.com/wpuu/kof/actions/runs/40457833434) | 真实 Chromium 游戏、触控模拟、90ms 回环，再手动注入更正历史输入，回滚恢复计数 0→2，PASS |
+| [40458272618](https://github.com/wpuu/kof/actions/runs/40458272618) | 最初管理员修复 CI **FAIL**：patch 的测试代码锚点不唯一，修复后重测 |
+| [40458339114](https://github.com/wpuu/kof/actions/runs/40458339114) | 加入管理员原型守卫；**280 passed, 0 failed**，匿名 401、错误凭据 403、临时正确凭据 200；原项目未改变 |
+
+管理员修复测试采用隔离临时 clone、一次性随机测试令牌及 `/api/admin/*` 的 fail-closed 中间件，**不构成完整生产认证、RBAC、数据保护或支付安全审计**。详细见 [P0-003](P0-003_ADMIN_GUARD_RESULT.md)。

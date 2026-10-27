@@ -55,3 +55,5 @@
 - [P0-008：真实双端“延迟＋连续丢包”组合与 5 次重复实验](docs/P0-008_COMBINED_IMPAIRMENT_2026-10-27.md)
 - [首次组合实验](https://github.com/wpuu/kof/actions/runs/40462383605)、[90ms+4 连丢五轮重复](https://github.com/wpuu/kof/actions/runs/40462568356)：桌面端五轮全部出现同帧状态不一致，模拟触屏五轮出现两次不一致（仅实验室样本，不是现实网络失败率）。
 - 当前不得使用四帧冗余原型进行有价比赛、成绩结算或公开收费对战。需推进 [Issue #5](https://github.com/wpuu/kof/issues/5) 的可靠 ACK/选择性补发及不可恢复状态下的作废。
+
+- [P0-009：下一开发阶段可靠输入 V2 技术规格（未实现）](docs/P0-009_RELIABLE_INPUT_PROTOCOL_DRAFT.md)。

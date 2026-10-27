@@ -93,13 +93,32 @@ async function createPair(browser, url, name) {
   }, offerJson);
   const answerJson = await gather(b);
   await a.evaluate(desc => pc.setRemoteDescription(desc), answerJson);
-  await until('V2 game channel handshake', async () => {
-    const [x,y] = await Promise.all([
-      a.evaluate(() => session.ready),
-      b.evaluate(() => session.ready)
-    ]);
-    return x && y;
-  });
+  try {
+    await until('V2 game channel handshake', async () => {
+      const [x,y] = await Promise.all([
+        a.evaluate(() => session.ready),
+        b.evaluate(() => session.ready)
+      ]);
+      return x && y;
+    });
+  } catch (error) {
+    const diagnostics = [];
+    for (const page of [a,b]) {
+      diagnostics.push(await page.evaluate(() => ({
+        pcConnectionState: pc.connectionState,
+        iceState: pc.iceConnectionState,
+        signalingState: pc.signalingState,
+        ready: session.ready, aborted: session.aborted,
+        handshakeComplete: session.peer.handshakeComplete,
+        fast: session.fastChannel?.readyState ?? null,
+        control: session.controlChannel?.readyState ?? null,
+        readyCount,
+        metrics: session.metrics
+      })).catch(e => ({ browserError: e.message.slice(0,120) })));
+    }
+    console.error('Sanitized handshake diagnostics: ' + JSON.stringify(diagnostics));
+    throw error;
+  }
   return { a, b, name, errors, async close() {
     await Promise.all([aContext.close(), bContext.close()]);
   }};

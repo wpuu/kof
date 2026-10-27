@@ -26,7 +26,7 @@ if (!Number.isInteger(transportDelayMs) || transportDelayMs < 0 || transportDela
 }
 async function configureSimulatedDelay(context, shouldDrop) {
   if (!transportDelayMs && !shouldDrop) return;
-  await context.addInitScript(({ ms, drop }) => {
+  await context.addInitScript(({ ms, drop, burst }) => {
     const originalSend = RTCDataChannel.prototype.send;
     window.__p0FaultCounters = {
       gameplaySent: 0, dropped: 0, droppedFrame: null, firstDroppedFrame: null

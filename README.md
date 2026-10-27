@@ -50,3 +50,8 @@
 - [P0-005：两个独立浏览器真实游戏联机＋0/45/90ms 延迟同帧哈希](docs/P0-005_TWO_PEER_RESULT.md) — 已在 CI 通过，同机实验，不代表真实异网。
 - [P0-006：丢 1 包原版不同步；29B 先前四帧冗余恢复丢 1—4 包，5 包仍不同步](docs/P0-006_PACKET_LOSS_RECOVERY_2026-10-27.md) — 已在 CI 复现与对照验证。
 - [后续任务 #5：生产级输入 ACK／选择性补发及超限作废](https://github.com/wpuu/kof/issues/5) — 未执行完成。
+
+### 2026-10-27 最新网络压力实验
+- [P0-008：真实双端“延迟＋连续丢包”组合与 5 次重复实验](docs/P0-008_COMBINED_IMPAIRMENT_2026-10-27.md)
+- [首次组合实验](https://github.com/wpuu/kof/actions/runs/40462383605)、[90ms+4 连丢五轮重复](https://github.com/wpuu/kof/actions/runs/40462568356)：桌面端五轮全部出现同帧状态不一致，模拟触屏五轮出现两次不一致（仅实验室样本，不是现实网络失败率）。
+- 当前不得使用四帧冗余原型进行有价比赛、成绩结算或公开收费对战。需推进 [Issue #5](https://github.com/wpuu/kof/issues/5) 的可靠 ACK/选择性补发及不可恢复状态下的作废。

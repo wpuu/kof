@@ -1,0 +1,70 @@
+name: P0 exploratory two-peer packet delay
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-peer-delay.yml'
+      - 'lab/neon_two_peer_smoke.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  artificial-delay:
+    strategy:
+      fail-fast: false
+      matrix:
+        extra_send_delay_ms: [45, 90]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      NEON_SEND_DELAY_MS: ${{ matrix.extra_send_delay_ms }}
+    steps:
+      - name: Checkout lab only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone pinned upstream game
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Install isolated test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+          node --check lab/neon_two_peer_smoke.mjs
+      - name: Two-player test with added artificial send delay
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/neon-local.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          test "$ok" = 1
+          node lab/neon_two_peer_smoke.mjs
+      - name: Log limitations
+        if: always()
+        shell: bash
+        run: |
+          echo "Browser DataChannel sends are delayed by $NEON_SEND_DELAY_MS ms per direction (extra), using immutable copies of the 9-byte gameplay input packets." >> "$GITHUB_STEP_SUMMARY"
+          echo "This is synthetic application-layer packet delay, not real ISP latency, jitter, packet loss or a mobile-device validation." >> "$GITHUB_STEP_SUMMARY"

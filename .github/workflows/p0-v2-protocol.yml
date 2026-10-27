@@ -1,0 +1,39 @@
+name: P0 Netcode V2 protocol and reliability tests
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-v2-protocol.yml'
+      - 'src/netcode/**'
+      - 'tests/v2_netcode.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  reliability-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Read-only checkout without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax-check all V2 source
+        run: |
+          node --check src/netcode/v2_protocol.mjs
+          node --check src/netcode/v2_reliability.mjs
+          node --check tests/v2_netcode.test.mjs
+      - name: Run strict deterministic V2 packet and reliability tests
+        run: node --test tests/v2_netcode.test.mjs
+      - name: Scope / limitations
+        if: always()
+        shell: bash
+        run: |
+          echo 'V2 tests exercise codec, selective ACK, bounded resend and fail-closed behavior without external dependencies.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This is a standalone netcode prototype: not integrated into Neon Fist game/WebRTC, not a physical mobile/ISP latency test, not production-secure or a commercial esports certification.' >> "$GITHUB_STEP_SUMMARY"

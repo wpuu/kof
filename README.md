@@ -57,3 +57,9 @@
 - 当前不得使用四帧冗余原型进行有价比赛、成绩结算或公开收费对战。需推进 [Issue #5](https://github.com/wpuu/kof/issues/5) 的可靠 ACK/选择性补发及不可恢复状态下的作废。
 
 - [P0-009：下一开发阶段可靠输入 V2 技术规格（未实现）](docs/P0-009_RELIABLE_INPUT_PROTOCOL_DRAFT.md)。
+
+## 2026-10-27 对照 Kawaks 1.45 的下一步联机方案
+- [Kawaks 联机体验与现代回滚网络架构对照](docs/KAWAKS_NETPLAY_REPLACEMENT_PLAN_2026-10-27.md)
+- [V2 独立协议实际测试结果：18/18通过](docs/P0-010_V2_CODEC_ACK_RESULTS_2026-10-27.md) — **不是游戏端联机验收**。
+- [V2 输入数据包代码](src/netcode/v2_protocol.mjs) / [有限补发与ACK模块](src/netcode/v2_reliability.mjs)
+- [V2 GitHub Actions](.github/workflows/p0-v2-protocol.yml) / [下一阶段 Issue #5](https://github.com/wpuu/kof/issues/5)

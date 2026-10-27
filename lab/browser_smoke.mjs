@@ -39,7 +39,7 @@ function parseTypedSignal(value, type) {
   return s;
 }
 
-let browser;
+let browser, pageA, pageB;
 try {
   await new Promise((resolve, reject) => {
     serve.once('error', reject);
@@ -56,8 +56,8 @@ try {
   });
   const contextA = await browser.newContext();
   const contextB = await browser.newContext();
-  const a = await contextA.newPage();
-  const b = await contextB.newPage();
+  const a = pageA = await contextA.newPage();
+  const b = pageB = await contextB.newPage();
   const errors = [];
   for (const page of [a, b]) {
     page.on('pageerror', e => errors.push(e.message));
@@ -85,10 +85,12 @@ try {
   await a.locator('#remote').fill(answerJson);
   await a.locator('#applyAnswer').click();
 
+  // The status element can be overwritten by later ICE state transitions.
+  // The append-only diagnostic log is the reliable way to observe onopen.
   await until('A open DataChannel', async () =>
-    (await a.locator('#state').textContent()).includes('DataChannel open'));
+    (await a.locator('#log').textContent()).includes('DataChannel open'));
   await until('B open DataChannel', async () =>
-    (await b.locator('#state').textContent()).includes('DataChannel open'));
+    (await b.locator('#log').textContent()).includes('DataChannel open'));
   const metrics = await until('RTT samples on both peers', async () => {
     const x = await a.locator('#metrics').textContent();
     const y = await b.locator('#metrics').textContent();
@@ -115,6 +117,22 @@ try {
   await contextB.close();
 } catch (error) {
   console.error('P0 browser smoke FAIL: ' + error.message);
+  // Only print state summaries; never print SDP/ICE raw addresses or tokens.
+  for (const [name, page] of [['A', pageA], ['B', pageB]]) {
+    if (!page || page.isClosed()) continue;
+    try {
+      const diag = await page.evaluate(() => ({
+        state: document.getElementById('state')?.textContent,
+        logTail: document.getElementById('log')?.textContent?.slice(-1100),
+        metrics: document.getElementById('metrics')?.textContent?.replace(/候选对: .+/, '候选对: [redacted]'),
+        rtcState: typeof pc !== 'undefined' ? pc?.connectionState : 'not-created',
+        iceState: typeof pc !== 'undefined' ? pc?.iceConnectionState : 'not-created',
+        channelState: typeof channel !== 'undefined' ? channel?.readyState : 'not-created',
+        localSignalPresent: !!document.getElementById('local')?.value
+      }));
+      console.error(name + ' diagnostics: ' + JSON.stringify(diag));
+    } catch (e) { console.error(name + ' diagnostics unavailable: ' + e.message); }
+  }
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close().catch(() => {});

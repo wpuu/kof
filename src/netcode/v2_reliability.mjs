@@ -192,6 +192,19 @@ export class ReliableInputPeer {
       }
       case PacketType.INPUT_ACK: {
         const { through, bitmap } = msg;
+        // A peer must never be allowed to claim receipt of input frames
+        // we have not sent: that would discard retransmission history.
+        if (through > this.lastOutgoingFrame) {
+          return { type: 'abort', packet: this.safeAbort(AbortReason.DESYNC),
+            detail: 'ACK beyond transmitted frame' };
+        }
+        for (let offset = 0; offset < 32; offset++) {
+          if (((bitmap >>> offset) & 1) === 1 &&
+              through + 1 + offset > this.lastOutgoingFrame) {
+            return { type: 'abort', packet: this.safeAbort(AbortReason.DESYNC),
+              detail: 'selective ACK beyond transmitted frame' };
+          }
+        }
         let ackedNow = 0;
         for (const frame of this.sent.keys()) {
           const offset = frame - (through + 1);

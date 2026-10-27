@@ -1,0 +1,81 @@
+name: P0 recovered packet burst boundary
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-input-burst.yml'
+      - 'lab/neon_two_peer_smoke.mjs'
+      - 'lab/patch_neon_redundant_input.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  history-capacity:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - burst: 4
+            expected_desync: '0'
+            expected_result: 'recover'
+          - burst: 5
+            expected_desync: '1'
+            expected_result: 'exceed-history-window'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      NEON_DROP_FIRST_NONZERO: host
+      NEON_DROP_BURST_COUNT: ${{ matrix.burst }}
+      NEON_EXPECT_DESYNC: ${{ matrix.expected_desync }}
+    steps:
+      - name: Checkout test-only repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Checkout pinned upstream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Apply isolated input-history patch and install
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check lab/neon_two_peer_smoke.mjs
+          node lab/patch_neon_redundant_input.mjs upstream
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Assert the expected four-history-frames recovery boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/burst-test.log" 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          test "$ok" = 1
+          node lab/neon_two_peer_smoke.mjs
+      - name: Report negative and positive tests distinctly
+        if: always()
+        shell: bash
+        run: |
+          echo "Dropped $NEON_DROP_BURST_COUNT consecutive nonzero host-input packets in each short session." >> "$GITHUB_STEP_SUMMARY"
+          echo "Expected result: ${{ matrix.expected_result }}. A CI pass with 5 dropped means limitation/desync was reproduced, not that the game is reliable under 5-packet loss." >> "$GITHUB_STEP_SUMMARY"
+          echo "These are same-host artificial faults; no physical mobile network or packet-burst probability is estimated." >> "$GITHUB_STEP_SUMMARY"

@@ -19,6 +19,7 @@ if (!Number.isInteger(dropBurstCount) || dropBurstCount < 1 || dropBurstCount > 
   throw new Error('NEON_DROP_BURST_COUNT must be 1..8');
 }
 const expectDesync = process.env.NEON_EXPECT_DESYNC === '1';
+const observeOnly = process.env.NEON_DIAGNOSTIC_ONLY === '1';
 if (expectDesync && !dropFirstHostNonzero) throw new Error('Expected-desync mode requires host drop fault');
 
 if (!Number.isInteger(transportDelayMs) || transportDelayMs < 0 || transportDelayMs > 200) {
@@ -248,13 +249,17 @@ async function testCase(browser, { name, guestTouch }) {
       if (synchronized.hashMatch) {
         throw new Error('Expected divergence not observed; inspect resilience or dropped frame');
       }
-    } else if (synchronized.sameFrame && !synchronized.hashMatch) {
+    } else if (!observeOnly && synchronized.sameFrame && !synchronized.hashMatch) {
       throw new Error('Confirmed game-state hash mismatch at same simulation frame: ' +
         synchronized.targetFrame);
     }
     return {
       case: name,
-      result: expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS',
+      result: observeOnly
+        ? (synchronized.sameFrame
+            ? (synchronized.hashMatch ? 'CONSISTENT' : 'DIVERGED')
+            : 'INCONCLUSIVE_NO_SAME_FRAME')
+        : (expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS'),
       verified: ['two independent browser contexts exchange actual SDP',
         'both WebRTC DataChannels open', 'both receive remote game input frames',
         'host P1 movement is observed by both clients',
@@ -318,7 +323,8 @@ try {
   const results = [];
   for (const c of cases) results.push(await testCase(browser, c));
   console.log(JSON.stringify({
-    status: expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS',
+    status: observeOnly ? 'DIAGNOSTIC_COMPLETE' :
+      (expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS'),
     scope: 'actual game between two independent Chromium contexts on one CI host',
     intentionalHostPacketLoss: dropFirstHostNonzero,
     intentionalHostPacketLossCount: dropFirstHostNonzero ? dropBurstCount : 0,

@@ -1,0 +1,46 @@
+name: P0 WebRTC browser smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-browser-smoke.yml'
+      - 'lab/browser_smoke.mjs'
+      - 'lab/package.json'
+      - 'lab/p2p_probe.html'
+
+permissions:
+  contents: read
+
+jobs:
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout only the project repository, without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Playwright runtime
+        run: npm install --prefix lab --ignore-scripts --no-audit --no-fund
+      - name: Ensure browser is available
+        run: |
+          if command -v google-chrome >/dev/null; then
+            google-chrome --version
+          else
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Syntax-check probe integration test
+        run: node --check lab/browser_smoke.mjs
+      - name: Run two real browser contexts on localhost
+        run: npm run smoke --prefix lab
+      - name: Record scope boundary
+        if: always()
+        shell: bash
+        run: |
+          echo "This browser smoke checks WebRTC DataChannel between two Chromium contexts on one GitHub runner, with host-only ICE." >> "$GITHUB_STEP_SUMMARY"
+          echo "It does NOT verify mobile hardware, cross-carrier internet/NAT traversal, frame timings or KOF gameplay." >> "$GITHUB_STEP_SUMMARY"

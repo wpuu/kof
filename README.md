@@ -63,3 +63,8 @@
 - [V2 独立协议实际测试结果：18/18通过](docs/P0-010_V2_CODEC_ACK_RESULTS_2026-10-27.md) — **不是游戏端联机验收**。
 - [V2 输入数据包代码](src/netcode/v2_protocol.mjs) / [有限补发与ACK模块](src/netcode/v2_reliability.mjs)
 - [V2 GitHub Actions](.github/workflows/p0-v2-protocol.yml) / [下一阶段 Issue #5](https://github.com/wpuu/kof/issues/5)
+
+## 2026-10-28：成熟联网项目调研与独立对照任务
+- [C01｜Fightcade / SNK 98UMFE / GGRS / Matchbox / Extreme Bevy / Tough Love Arena / Slippi / RMG-K，附 Reddit、B站社区反馈及许可证](docs/2026-10-28/C01_NETPLAY_SUCCESS_CASES.md)
+- [P0-012｜比较 GGRS＋Matchbox 成熟浏览器回滚架构与现有 JS V2](https://github.com/wpuu/kof/issues/6)：按真实代码、同帧哈希、延迟/丢包和手机异网测量做选择，**不是立即替换所有现有代码**。
+- 当前 V2 的 25/25 纯协议单测和同机五包补发已通过；**Neon Fist 真游戏集成 #40541315755 仍失败，双方进入 VOID/MALFORMED**。不得宣传为上线成功。

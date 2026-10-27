@@ -1,0 +1,68 @@
+name: P0 lost-input desync experiment
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-input-loss.yml'
+      - 'lab/neon_two_peer_smoke.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  deliberate-packet-loss:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      NEON_DROP_FIRST_NONZERO: host
+      NEON_EXPECT_DESYNC: '1'
+      NEON_SEND_DELAY_MS: '0'
+    steps:
+      - name: Checkout test harness only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone immutable upstream commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Install CI browser and original backend dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+          node --check lab/neon_two_peer_smoke.mjs
+      - name: Observe one deliberately dropped first nonzero input frame
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/lost-input-local.log" 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          test "$ok" = 1
+          node lab/neon_two_peer_smoke.mjs
+      - name: Interpret result correctly
+        if: always()
+        shell: bash
+        run: |
+          echo 'A passing CI run here means a deliberately omitted first nonzero game input is confirmed to cause a same-frame hash divergence in the unchanged upstream code.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'This is NEGATIVE fault reproduction, not proof that the game withstands packet loss. It does not simulate real carrier links or iPhone/Android hardware.' >> "$GITHUB_STEP_SUMMARY"

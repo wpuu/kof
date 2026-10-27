@@ -1,0 +1,72 @@
+name: P0 Neon Fist browser gameplay
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-neon-browser.yml'
+      - 'lab/neon_browser_smoke.mjs'
+      - 'lab/package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  neon-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+    steps:
+      - name: Checkout test harness without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch pinned public game source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          cd upstream
+          git checkout --detach "$UPSTREAM_SHA"
+          test "$(git rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Install test runner and game dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Validate browser harness syntax
+        run: node --check lab/neon_browser_smoke.mjs
+      - name: Run real game in isolated local browser sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/local-game.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          if [ "$ok" != 1 ]; then
+            echo 'Local game server did not start'
+            tail -60 "$RUNNER_TEMP/local-game.log"
+            exit 1
+          fi
+          node lab/neon_browser_smoke.mjs
+      - name: Scope of evidence
+        if: always()
+        shell: bash
+        run: |
+          echo "Actual Chromium loads the original game, starts a match, reads engine frame progress and sends keyboard and emulated touch inputs." >> "$GITHUB_STEP_SUMMARY"
+          echo "In-page 90ms loopback is attempted; this is NOT actual phone hardware, a remote carrier P2P test, or a public deployment." >> "$GITHUB_STEP_SUMMARY"

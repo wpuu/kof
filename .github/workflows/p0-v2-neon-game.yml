@@ -1,0 +1,79 @@
+name: P0 V2 real fighting game browser integration
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-v2-neon-game.yml'
+      - 'lab/neon_v2_two_peer_smoke.mjs'
+      - 'lab/patch_neon_v2_channels.mjs'
+      - 'src/netcode/**'
+
+permissions:
+  contents: read
+
+jobs:
+  neon-v2-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+    steps:
+      - name: Checkout non-production V2 bridge and test harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone exact upstream game commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          cd upstream
+          git checkout --detach "$UPSTREAM_SHA"
+          test "$(git rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Apply dual-datachannel V2 integration to temporary game clone
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check lab/patch_neon_v2_channels.mjs
+          node --check lab/neon_v2_two_peer_smoke.mjs
+          node lab/patch_neon_v2_channels.mjs upstream
+          git -C upstream diff --stat
+      - name: Install test-only browser and upstream server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Actual two-browser fighting game with V2 ACK/resend channels
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/neon-v2-game.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          if [ "$ok" != 1 ]; then
+            echo 'Temporary Neon Fist server failed to launch'
+            tail -35 "$RUNNER_TEMP/neon-v2-game.log"
+            exit 1
+          fi
+          node lab/neon_v2_two_peer_smoke.mjs
+      - name: Do not overclaim evidence
+        if: always()
+        shell: bash
+        run: |
+          echo 'This experiment modifies only a temporary pinned Neon Fist clone, under localhost. V2 dual-channel adapter is integrated into the actual game simulation for testing.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'No KOF ROM, real payment, phone hardware or external P2P routing. A CI failure is a real integration blocker, not a reason to claim netplay success.' >> "$GITHUB_STEP_SUMMARY"

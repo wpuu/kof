@@ -213,3 +213,35 @@ test('No returned network result should imply a financial payout or gameplay saf
   assert.equal('winnerId' in b, false);
   assert.equal('wallet' in a, false);
 });
+
+test('Forged future cumulative ACK cannot erase retransmission buffer', () => {
+  const [a] = peers();
+  for (let f = 0; f < 8; f++) a.sendInput(f, 1);
+  const got = a.receive(mk(P.INPUT_ACK, { through: 9999, bitmap: 0 }));
+  assert.equal(got.type, 'abort');
+  assert.equal(got.detail, 'ACK beyond transmitted frame');
+  assert.equal(a.sent.size, 8);
+  assert.equal(a.aborted, true);
+});
+
+test('Forged selective ACK on an unsent future frame cannot erase retransmission buffer', () => {
+  const [a] = peers();
+  for (let f = 0; f < 8; f++) a.sendInput(f, 1);
+  // through 0, 8th offset corresponds to frame 8 which is not yet sent.
+  const got = a.receive(mk(P.INPUT_ACK, { through: 0, bitmap: 1 << 7 }));
+  assert.equal(got.type, 'abort');
+  assert.equal(got.detail, 'selective ACK beyond transmitted frame');
+  assert.equal(a.sent.size, 8);
+});
+
+test('Invalid match ID on incoming packet never changes confirmed inputs', () => {
+  const [a, b] = peers();
+  assert.throws(
+    () => b.receive(encodePacket({
+      type: P.INPUT, matchId: MATCH_ID + 1, seq: 2, frame: 0, mask: 1
+    })),
+    /identity/
+  );
+  assert.equal(b.received.size, 0);
+  assert.equal(b.metrics.invalid, 1);
+});

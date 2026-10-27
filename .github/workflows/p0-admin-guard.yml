@@ -1,0 +1,83 @@
+name: P0 experimental admin guard
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-admin-guard.yml'
+      - 'lab/patch_neon_admin_guard.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  admin-auth-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+    steps:
+      - name: Checkout experimental test harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone pinned public upstream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          cd upstream
+          git checkout --detach "$UPSTREAM_SHA"
+          test "$(git rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Apply narrow fail-closed admin guard patch and check syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node lab/patch_neon_admin_guard.mjs upstream
+          node --check upstream/src/server/liveopsRoutes.js
+          node --check upstream/tests/t_liveops_http.js
+          git -C upstream diff --stat
+      - name: Install locked dependencies and generate isolated test-only token
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          echo "NEON_ADMIN_TOKEN=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - name: Run full upstream tests plus admin authentication regression assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && npm test)
+      - name: Verify anonymous, invalid and valid admin requests to local patched server
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18791 node src/server/index.js) > "$RUNNER_TEMP/neon-guard.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 40); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:18791/health >/dev/null; then ready=1; break; fi
+            sleep 0.5
+          done
+          if [ "$ready" != 1 ]; then echo 'Local server not ready'; exit 1; fi
+          endpoint=http://127.0.0.1:18791/api/admin/config/kill
+          payload='{"channel":"stable","killed":true}'
+          anon=$(curl --silent --show-error -o /dev/null -w '%{http_code}' -X POST "$endpoint" -H 'Content-Type: application/json' -d "$payload")
+          invalid=$(curl --silent --show-error -o /dev/null -w '%{http_code}' -X POST "$endpoint" -H 'Content-Type: application/json' -H 'Authorization: Bearer invalid' -d "$payload")
+          valid=$(curl --silent --show-error -o /dev/null -w '%{http_code}' -X POST "$endpoint" -H 'Content-Type: application/json' -H "Authorization: Bearer $NEON_ADMIN_TOKEN" -d "$payload")
+          echo "anonymous=$anon invalid=$invalid valid=$valid"
+          test "$anon" = 401
+          test "$invalid" = 403
+          test "$valid" = 200
+          echo "P0 guard behavior on localhost: anonymous=401, invalid=403, test-token=200." >> "$GITHUB_STEP_SUMMARY"
+      - name: Explicit production boundary
+        if: always()
+        shell: bash
+        run: |
+          echo "This is a prototype static env-token guard, not full session auth or RBAC." >> "$GITHUB_STEP_SUMMARY"
+          echo "DO NOT deploy upstream as-is; independently audit other user/data/payment endpoints and rotate production secrets." >> "$GITHUB_STEP_SUMMARY"

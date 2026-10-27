@@ -245,3 +245,27 @@ test('Invalid match ID on incoming packet never changes confirmed inputs', () =>
   assert.equal(b.received.size, 0);
   assert.equal(b.metrics.invalid, 1);
 });
+
+test('Simulated 90ms one-way lag + four lost frames aborts safely before trusted result', () => {
+  // 60Hz simulation: 90ms ~= 6 frame delivery delay. This is a virtual model,
+  // NOT actual Chrome P2P and NOT proof of responsiveness.
+  const [a, b] = peers({ rollbackWindow: 8 });
+  const messages = Array.from({ length: 25 }, (_, frame) =>
+    a.sendInput(frame, frame === 4 ? 1 : 0));
+  let abortAt = null;
+  for (let tick = 0; tick < 25; tick++) {
+    const sentFrame = tick - 6;
+    if (sentFrame >= 0 && ![4, 5, 6, 7].includes(sentFrame)) {
+      b.receive(messages[sentFrame], { currentSimFrame: tick });
+    }
+    const status = b.checkSafety(tick);
+    if (!status.ok) {
+      abortAt = tick;
+      assert.equal(decodePacket(status.packet).reason, AbortReason.UNRECOVERABLE_INPUT);
+      break;
+    }
+  }
+  assert.notEqual(abortAt, null, 'critical history gap is not silently ignored');
+  assert.ok(abortAt <= 15, 'unsafe frame causes prompt fail-closed state');
+  assert.equal(b.aborted, true);
+});

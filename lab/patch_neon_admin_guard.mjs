@@ -57,9 +57,9 @@ const getAnchor = "  const get = async p => (await fetch(url(p))).json();";
 tests = replaceOnce(tests, getAnchor,
   "  const adminHeaders = p => p.startsWith('/api/admin/') ? { authorization: 'Bearer ' + process.env.NEON_ADMIN_TOKEN } : {};\n  const get = async p => (await fetch(url(p), { headers: adminHeaders(p) })).json();",
   testPath);
-const postAnchor = "headers: { 'content-type': 'application/json' }";
+const postAnchor = "const r = await fetch(url(p), { method: 'POST', headers: { 'content-type': 'application/json' },";
 tests = replaceOnce(tests, postAnchor,
-  "headers: { 'content-type': 'application/json', ...adminHeaders(p) }",
+  "const r = await fetch(url(p), { method: 'POST', headers: { 'content-type': 'application/json', ...adminHeaders(p) },",
   testPath);
 const assertions = `
   // Guard regression: test unauthenticated/incorrect auth without disclosing the token.

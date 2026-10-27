@@ -1,0 +1,83 @@
+name: P0 combined delay and dropped input diagnostics
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-combined-impairment.yml'
+      - 'lab/neon_two_peer_smoke.mjs'
+      - 'lab/patch_neon_redundant_input.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  combined-impairment:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - send_delay_ms: 45
+            lost_packets: 1
+          - send_delay_ms: 90
+            lost_packets: 1
+          - send_delay_ms: 45
+            lost_packets: 4
+          - send_delay_ms: 90
+            lost_packets: 4
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      NEON_DROP_FIRST_NONZERO: host
+      NEON_DROP_BURST_COUNT: ${{ matrix.lost_packets }}
+      NEON_SEND_DELAY_MS: ${{ matrix.send_delay_ms }}
+      NEON_DIAGNOSTIC_ONLY: '1'
+    steps:
+      - name: Checkout isolated test harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin upstream to immutable SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Patch only temporary source and install exact dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node lab/patch_neon_redundant_input.mjs upstream
+          node --check lab/neon_two_peer_smoke.mjs
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Observe game state under combined synthetic delay plus loss
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/combined-impairment.log" 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          test "$ok" = 1
+          node lab/neon_two_peer_smoke.mjs
+      - name: Scope and outcome warning
+        if: always()
+        shell: bash
+        run: |
+          echo "Diagnostic mode records observed consistency or divergence; a green CI run does NOT guarantee that the netcode recovered." >> "$GITHUB_STEP_SUMMARY"
+          echo "Same-host Chrome contexts with added $NEON_SEND_DELAY_MS ms per-direction send delay and $NEON_DROP_BURST_COUNT dropped input packets. No real ISP/mobile measurements." >> "$GITHUB_STEP_SUMMARY"

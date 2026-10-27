@@ -1,0 +1,75 @@
+name: P0 recovered input-loss prototype
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-input-recovery.yml'
+      - 'lab/patch_neon_redundant_input.mjs'
+      - 'lab/neon_two_peer_smoke.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  history-redundancy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      NEON_DROP_FIRST_NONZERO: host
+      NEON_SEND_DELAY_MS: '0'
+    steps:
+      - name: Checkout harness only (not production)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone and verify pinned upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Apply narrow experimental 29-byte input-history codec
+        shell: bash
+        run: |
+          set -euo pipefail
+          node lab/patch_neon_redundant_input.mjs upstream
+          node --check lab/patch_neon_redundant_input.mjs
+          node --check lab/neon_two_peer_smoke.mjs
+          git -C upstream diff --stat
+      - name: Install test and game dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Execute two-peer browser loss recovery acceptance test
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/recovery.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          test "$ok" = 1
+          node lab/neon_two_peer_smoke.mjs
+      - name: Explicit test limits
+        if: always()
+        shell: bash
+        run: |
+          echo "This modifies ONLY an isolated temporary clone, not the original game or production. One host movement packet deliberately dropped." >> "$GITHUB_STEP_SUMMARY"
+          echo "A PASS means repaired peers agree on same-frame hash in these two short tests only. NOT validated: burst loss, adversarial peers, jitter, real networks, session auth, mobile hardware." >> "$GITHUB_STEP_SUMMARY"

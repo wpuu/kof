@@ -7,6 +7,7 @@ on:
       - '.github/workflows/p0-v2-protocol.yml'
       - 'src/netcode/**'
       - 'tests/v2_netcode.test.mjs'
+      - 'tests/v2_datachannels.test.mjs'
 
 permissions:
   contents: read
@@ -28,9 +29,11 @@ jobs:
         run: |
           node --check src/netcode/v2_protocol.mjs
           node --check src/netcode/v2_reliability.mjs
+          node --check src/netcode/v2_datachannels.mjs
           node --check tests/v2_netcode.test.mjs
+          node --check tests/v2_datachannels.test.mjs
       - name: Run strict deterministic V2 packet and reliability tests
-        run: node --test tests/v2_netcode.test.mjs
+        run: node --test tests/v2_netcode.test.mjs tests/v2_datachannels.test.mjs
       - name: Scope / limitations
         if: always()
         shell: bash

@@ -1,0 +1,72 @@
+name: P0 two-peer fighting integration
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-two-peer.yml'
+      - 'lab/neon_two_peer_smoke.mjs'
+      - 'lab/package.json'
+
+permissions:
+  contents: read
+
+jobs:
+  same-runner-peers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+    steps:
+      - name: Checkout test repository (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone pinned public upstream game
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          cd upstream
+          git checkout --detach "$UPSTREAM_SHA"
+          test "$(git rev-parse HEAD)" = "$UPSTREAM_SHA"
+      - name: Install browser test tool and upstream dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Check test syntax
+        run: node --check lab/neon_two_peer_smoke.mjs
+      - name: Start local game server and play two-peer game
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/neon-server.log" 2>&1 &
+          GAME_PID=$!
+          trap 'kill "$GAME_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 60); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:18789/health > /dev/null; then ready=1; break; fi
+            sleep 0.25
+          done
+          if [ "$ready" != 1 ]; then
+            echo "Local game not ready"
+            tail -30 "$RUNNER_TEMP/neon-server.log"
+            exit 1
+          fi
+          node lab/neon_two_peer_smoke.mjs
+      - name: Declare verification limitations
+        if: always()
+        shell: bash
+        run: |
+          echo 'Two Chromium browser contexts on a single GitHub runner. ICE servers overridden to empty in page responses for host-only pairing.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'NOT real phones, different ISP connections, NAT traversal, TURN, jitter or commercial gameplay certification.' >> "$GITHUB_STEP_SUMMARY"

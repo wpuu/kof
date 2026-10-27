@@ -54,6 +54,37 @@ jobs:
           node --check src/server/signaling.js
           node --check src/server/liveopsRoutes.js
           node --check tests/run.js
+      - name: Verify unauthenticated admin control is blocked before production
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PORT=18787
+          node src/server/index.js > "$RUNNER_TEMP/neon-local.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 40); do
+            if curl --silent --fail --max-time 2 http://127.0.0.1:18787/health >/dev/null; then ready=1; break; fi
+            sleep 0.5
+          done
+          if [ "$ready" != 1 ]; then
+            echo "Local server failed to start"
+            tail -40 "$RUNNER_TEMP/neon-local.log"
+            exit 1
+          fi
+          # Deliberately exercise an unsafe endpoint ONLY on this isolated local CI runner.
+          http_code=$(curl --silent --show-error --max-time 4 -o "$RUNNER_TEMP/admin-response.json" -w '%{http_code}' \
+            -X POST http://127.0.0.1:18787/api/admin/config/kill \
+            -H 'Content-Type: application/json' \
+            -d '{"channel":"stable","killed":true}')
+          echo "Unauthenticated local POST /api/admin/config/kill HTTP status: $http_code"
+          if [ "$http_code" = 200 ]; then
+            echo "SECURITY BLOCKER CONFIRMED: unauthenticated caller was able to kill stable channel on a local clone." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The endpoint returned $http_code; inspect response and implementation before drawing security conclusions." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       - name: Report strict scope
         if: always()
         shell: bash

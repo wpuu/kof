@@ -56,6 +56,37 @@ const sample = page => page.evaluate(() => ({
   netRole: NEON.Net.role, active: NEON.Net.active,
   hash: NEON.hashGameState(NEON.Game, NEON.P1, NEON.P2)
 }));
+async function checkpointAtSameFrame(pageA, pageB) {
+  const getFrame = page => page.evaluate(() => NEON.Game.frame);
+  const [frameA, frameB] = await Promise.all([getFrame(pageA), getFrame(pageB)]);
+  const target = Math.max(frameA, frameB) + 75;
+  const pause = (page) => page.evaluate(targetFrame => new Promise(resolve => {
+    const step = () => {
+      if (NEON.Game.frame >= targetFrame) {
+        NEON.Game.paused = true;
+        resolve({
+          frame: NEON.Game.frame,
+          p1x: Number(NEON.P1.x.toFixed(4)),
+          p2x: Number(NEON.P2.x.toFixed(4)),
+          p1hp: NEON.P1.hp, p2hp: NEON.P2.hp,
+          timer: NEON.Game.timer, phase: NEON.Game.phase,
+          hash: NEON.hashGameState(NEON.Game, NEON.P1, NEON.P2),
+          rollbackCount: NEON.DEBUG.rb
+        });
+      } else {
+        requestAnimationFrame(step);
+      }
+    };
+    step();
+  }), target);
+  const [a, b] = await Promise.all([pause(pageA), pause(pageB)]);
+  const sameFrame = a.frame === b.frame;
+  return {
+    targetFrame: target, sameFrame, hashMatch: sameFrame ? a.hash === b.hash : null,
+    a, b
+  };
+}
+
 function assertSignal(signal, type) {
   const parsed = JSON.parse(Buffer.from(signal, 'base64').toString('utf8'));
   if (parsed.type !== type || !parsed.sdp || typeof parsed.sdp !== 'string')
@@ -165,8 +196,14 @@ async function testCase(browser, { name, guestTouch }) {
       throw new Error('Uncaught game error in a browser: ' +
         [...host.errors, ...guest.errors].slice(0, 4).join('; ').slice(0, 700));
     }
-    // Browser frames can differ slightly; compare non-frame fighter state
-    // as a diagnostic, not a strict cross-peer proof of identical simulation.
+    // Stop both game loops when they reach the same future simulation frame.
+    // A hash mismatch is meaningful only when frame numbers also match.
+    // No inputs are held during this quiet settle period.
+    const synchronized = await checkpointAtSameFrame(a, b);
+    if (synchronized.sameFrame && !synchronized.hashMatch) {
+      throw new Error('Confirmed game-state hash mismatch at same simulation frame: ' +
+        synchronized.targetFrame);
+    }
     return {
       case: name, result: 'PASS',
       verified: ['two independent browser contexts exchange actual SDP',
@@ -174,6 +211,7 @@ async function testCase(browser, { name, guestTouch }) {
         'host P1 movement is observed by both clients',
         'guest P2 movement is observed by both clients'],
       before, afterHost, afterGuest,
+      sameFrameCheckpoint: synchronized,
       absolutePlayerPositionDelta: {
         p1: Number(Math.abs(afterGuest[0].p1x - afterGuest[1].p1x).toFixed(2)),
         p2: Number(Math.abs(afterGuest[0].p2x - afterGuest[1].p2x).toFixed(2))

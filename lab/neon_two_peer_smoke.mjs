@@ -26,8 +26,8 @@ async function configureSimulatedDelay(context, shouldDrop) {
     const originalSend = RTCDataChannel.prototype.send;
     window.__p0FaultCounters = { gameplaySent: 0, dropped: 0, droppedFrame: null };
     RTCDataChannel.prototype.send = function (buffer) {
-      if (buffer instanceof ArrayBuffer && buffer.byteLength === 9 &&
-          this.label === 'fight') {
+      if (buffer instanceof ArrayBuffer && buffer.byteLength >= 9 &&
+          buffer.byteLength <= 64 && this.label === 'fight') {
         const immutable = buffer.slice(0);
         const view = new DataView(immutable);
         const mask = view.getUint8(4);

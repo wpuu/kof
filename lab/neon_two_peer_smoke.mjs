@@ -13,26 +13,42 @@ const gameURL = process.env.NEON_URL || 'http://127.0.0.1:18789/';
 // The original 9-byte gameplay buffers are recycled each frame, so copy each
 // ArrayBuffer before delaying it; otherwise this instrument would corrupt data.
 const transportDelayMs = Number(process.env.NEON_SEND_DELAY_MS || '0');
+const dropFirstHostNonzero = process.env.NEON_DROP_FIRST_NONZERO === 'host';
+const expectDesync = process.env.NEON_EXPECT_DESYNC === '1';
+if (expectDesync && !dropFirstHostNonzero) throw new Error('Expected-desync mode requires host drop fault');
+
 if (!Number.isInteger(transportDelayMs) || transportDelayMs < 0 || transportDelayMs > 200) {
   throw new Error('NEON_SEND_DELAY_MS must be an integer in 0..200');
 }
-async function configureSimulatedDelay(context) {
-  if (!transportDelayMs) return;
-  await context.addInitScript(ms => {
+async function configureSimulatedDelay(context, shouldDrop) {
+  if (!transportDelayMs && !shouldDrop) return;
+  await context.addInitScript(({ ms, drop }) => {
     const originalSend = RTCDataChannel.prototype.send;
+    window.__p0FaultCounters = { gameplaySent: 0, dropped: 0, droppedFrame: null };
     RTCDataChannel.prototype.send = function (buffer) {
       if (buffer instanceof ArrayBuffer && buffer.byteLength === 9 &&
           this.label === 'fight') {
         const immutable = buffer.slice(0);
-        const channel = this;
-        setTimeout(() => {
-          if (channel.readyState === 'open') originalSend.call(channel, immutable);
-        }, ms);
-        return;
+        const view = new DataView(immutable);
+        const mask = view.getUint8(4);
+        window.__p0FaultCounters.gameplaySent++;
+        if (drop && mask !== 0 && window.__p0FaultCounters.dropped === 0) {
+          window.__p0FaultCounters.dropped = 1;
+          window.__p0FaultCounters.droppedFrame = view.getInt32(0, true);
+          return; // deliberately simulate exactly one lost input packet
+        }
+        if (ms) {
+          const channel = this;
+          setTimeout(() => {
+            if (channel.readyState === 'open') originalSend.call(channel, immutable);
+          }, ms);
+          return;
+        }
+        return originalSend.call(this, immutable);
       }
       return originalSend.call(this, buffer);
     };
-  }, transportDelayMs);
+  }, { ms: transportDelayMs, drop: !!shouldDrop });
 }
 
 const executablePath = process.env.CHROME_BIN ||
@@ -124,7 +140,10 @@ async function testCase(browser, { name, guestTouch }) {
     : { viewport: { width: 1280, height: 720 } });
   let host, guest;
   try {
-    await Promise.all([configureSimulatedDelay(ctxA), configureSimulatedDelay(ctxB)]);
+    await Promise.all([
+      configureSimulatedDelay(ctxA, dropFirstHostNonzero),
+      configureSimulatedDelay(ctxB, false)
+    ]);
     [host, guest] = await Promise.all([prepare(ctxA), prepare(ctxB)]);
     const a = host.page, b = guest.page;
     await b.locator('#nJoin').click();
@@ -151,24 +170,30 @@ async function testCase(browser, { name, guestTouch }) {
     }, 26000);
     const before = await Promise.all([sample(a), sample(b)]);
     // HOST uses own P1 controls; remote GUEST should observe P1 moving right.
-    await a.keyboard.down('d');
+    const hostMoveKey = dropFirstHostNonzero ? 'a' : 'd';
+    await a.keyboard.down(hostMoveKey);
     await sleep(550);
-    await a.keyboard.up('d');
+    await a.keyboard.up(hostMoveKey);
     await sleep(250);
     const afterHost = await Promise.all([sample(a), sample(b)]);
-    if (afterHost[0].p1x < before[0].p1x + 15 ||
-        afterHost[1].p1x < before[1].p1x + 15) {
+    if (!dropFirstHostNonzero
+      ? (afterHost[0].p1x < before[0].p1x + 15 ||
+         afterHost[1].p1x < before[1].p1x + 15)
+      : (afterHost[0].p1x > before[0].p1x - 15 ||
+         afterHost[1].p1x > before[1].p1x - 15)) {
       throw new Error('P1 movement not reflected on both browser game states');
     }
 
     // GUEST uses the P1 local input mapping, but controls player P2 in netplay.
     // Optionally exercise touch on the emulated mobile guest.
+    const guestMoveKey = dropFirstHostNonzero ? 'd' : 'a';
     if (!guestTouch) {
-      await b.keyboard.down('a');
+      await b.keyboard.down(guestMoveKey);
       await sleep(500);
-      await b.keyboard.up('a');
+      await b.keyboard.up(guestMoveKey);
     } else {
-      const el = b.locator('[data-k="left"]');
+      const el = b.locator(dropFirstHostNonzero
+        ? '[data-k="right"]' : '[data-k="left"]');
       const rect = await el.boundingBox();
       if (!rect) throw new Error('Mobile touch control not visible');
       const cdp = await ctxB.newCDPSession(b);
@@ -185,8 +210,11 @@ async function testCase(browser, { name, guestTouch }) {
     }
     await sleep(300);
     const afterGuest = await Promise.all([sample(a), sample(b)]);
-    if (afterGuest[0].p2x > afterHost[0].p2x - 15 ||
-        afterGuest[1].p2x > afterHost[1].p2x - 15) {
+    if (!dropFirstHostNonzero
+      ? (afterGuest[0].p2x > afterHost[0].p2x - 15 ||
+         afterGuest[1].p2x > afterHost[1].p2x - 15)
+      : (afterGuest[0].p2x < afterHost[0].p2x + 15 ||
+         afterGuest[1].p2x < afterHost[1].p2x + 15)) {
       throw new Error('P2 movement not reflected on both browser game states');
     }
     if (!afterGuest.every(s => s.remoteFrame > 20 && s.active)) {
@@ -200,18 +228,35 @@ async function testCase(browser, { name, guestTouch }) {
     // A hash mismatch is meaningful only when frame numbers also match.
     // No inputs are held during this quiet settle period.
     const synchronized = await checkpointAtSameFrame(a, b);
-    if (synchronized.sameFrame && !synchronized.hashMatch) {
+    const faultInfo = await a.evaluate(() => window.__p0FaultCounters || null);
+    if (dropFirstHostNonzero && faultInfo?.dropped !== 1) {
+      throw new Error('Test invalid: expected first nonzero host input packet not dropped');
+    }
+    if (expectDesync) {
+      if (!synchronized.sameFrame) {
+        throw new Error('Inconclusive fault test: unable to sample exact same frame');
+      }
+      if (synchronized.hashMatch) {
+        throw new Error('Expected divergence not observed; inspect resilience or dropped frame');
+      }
+    } else if (synchronized.sameFrame && !synchronized.hashMatch) {
       throw new Error('Confirmed game-state hash mismatch at same simulation frame: ' +
         synchronized.targetFrame);
     }
     return {
-      case: name, result: 'PASS',
+      case: name,
+      result: expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS',
       verified: ['two independent browser contexts exchange actual SDP',
         'both WebRTC DataChannels open', 'both receive remote game input frames',
         'host P1 movement is observed by both clients',
         'guest P2 movement is observed by both clients'],
       before, afterHost, afterGuest,
       sameFrameCheckpoint: synchronized,
+      faultInfo: faultInfo ? {
+        gameplaySent: faultInfo.gameplaySent,
+        dropped: faultInfo.dropped,
+        droppedFrame: faultInfo.droppedFrame
+      } : null,
       absolutePlayerPositionDelta: {
         p1: Number(Math.abs(afterGuest[0].p1x - afterGuest[1].p1x).toFixed(2)),
         p2: Number(Math.abs(afterGuest[0].p2x - afterGuest[1].p2x).toFixed(2))
@@ -263,8 +308,9 @@ try {
   const results = [];
   for (const c of cases) results.push(await testCase(browser, c));
   console.log(JSON.stringify({
-    status: 'PASS',
+    status: expectDesync ? 'EXPECTED_DESYNC_REPRODUCED' : 'PASS',
     scope: 'actual game between two independent Chromium contexts on one CI host',
+    intentionalHostPacketLoss: dropFirstHostNonzero,
     artificialSendDelayMsPerDirection: transportDelayMs,
     chromeVersion: browser.version(), results,
     notVerified: ['real devices', 'cross-city/cross-carrier',

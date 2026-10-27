@@ -1,0 +1,75 @@
+name: P0 repeated 90ms+4-loss diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-90ms-repeat.yml'
+      - 'lab/neon_two_peer_smoke.mjs'
+      - 'lab/patch_neon_redundant_input.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  repeat-90ms-4loss:
+    strategy:
+      fail-fast: false
+      matrix:
+        repetition: [1, 2, 3, 4, 5]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      NEON_DROP_FIRST_NONZERO: host
+      NEON_DROP_BURST_COUNT: '4'
+      NEON_SEND_DELAY_MS: '90'
+      NEON_DIAGNOSTIC_ONLY: '1'
+    steps:
+      - name: Checkout tester
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pin upstream and apply temporary four-frame redundancy patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+          node lab/patch_neon_redundant_input.mjs upstream
+          node --check lab/neon_two_peer_smoke.mjs
+      - name: Install test requirements
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Repeat same-host two-peer game with combined impairments
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/combined-repeat.log" 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then ok=1; break; fi
+            sleep 0.25
+          done
+          test "$ok" = 1
+          node lab/neon_two_peer_smoke.mjs
+      - name: Explain diagnostic nature
+        if: always()
+        shell: bash
+        run: |
+          echo 'Repetition ${{ matrix.repetition }}: 90ms additional packet send latency each direction and four deliberately lost movement frames.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Success means the diagnostic executed; examine JSON outcomes CONSISTENT/DIVERGED and counters. No true ISP or mobile measurement.' >> "$GITHUB_STEP_SUMMARY"

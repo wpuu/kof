@@ -102,7 +102,31 @@ try {
         if (!rollback.netActive || rollback.remoteFrame < 0) {
           throw new Error('Loopback network active without remote inputs');
         }
-        outcomes.push({ case: 'local-loopback-90ms', result: 'PASS', netReady, rollback });
+        outcomes.push({ case: 'local-loopback-90ms', result: 'PASS', netReady, rollback,
+          scope: 'remote frame reception; spontaneous rollback counter may remain 0' });
+        // Separately exercise the rollback restore/re-simulation scheduler by
+        // deliberately injecting a corrected past input into the isolated test game.
+        // This is a deterministic DEBUG-only test, NOT a real network-induced rollback.
+        const injection = await page.evaluate(() => {
+          const pastFrame = NEON.Game.frame - 3;
+          const slot = NEON.Sim.slot(pastFrame);
+          if (!slot.valid || slot.frame !== pastFrame) {
+            throw new Error('rollback snapshot unavailable');
+          }
+          const beforeCount = NEON.DEBUG.rb;
+          NEON.Sim.setInput(pastFrame, 1, 1);
+          NEON.Net.rollbackTo = pastFrame;
+          return { pastFrame, beforeCount };
+        });
+        const afterRollback = await until('forced rollback restore/re-simulation',
+          async () => page.evaluate(() => NEON.DEBUG.rb), 5000);
+        if (afterRollback <= injection.beforeCount) {
+          throw new Error('forced rollback did not increment DEBUG.rb');
+        }
+        outcomes.push({ case: 'controlled-rollback-injection', result: 'PASS',
+          injectedFrame: injection.pastFrame, rollbackCounterBefore: injection.beforeCount,
+          rollbackCounterAfter: afterRollback,
+          scope: 'forced snapshot restore/re-simulation only, NOT spontaneous network rollback' });
       }
     } catch (e) {
       // Never print SDP, IP addresses, credentials or raw HTTP response bodies.

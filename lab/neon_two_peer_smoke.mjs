@@ -9,6 +9,32 @@ import { chromium } from 'playwright';
 import { existsSync } from 'node:fs';
 
 const gameURL = process.env.NEON_URL || 'http://127.0.0.1:18789/';
+// Exploratory additive DataChannel send delay (both directions).
+// The original 9-byte gameplay buffers are recycled each frame, so copy each
+// ArrayBuffer before delaying it; otherwise this instrument would corrupt data.
+const transportDelayMs = Number(process.env.NEON_SEND_DELAY_MS || '0');
+if (!Number.isInteger(transportDelayMs) || transportDelayMs < 0 || transportDelayMs > 200) {
+  throw new Error('NEON_SEND_DELAY_MS must be an integer in 0..200');
+}
+async function configureSimulatedDelay(context) {
+  if (!transportDelayMs) return;
+  await context.addInitScript(ms => {
+    const originalSend = RTCDataChannel.prototype.send;
+    RTCDataChannel.prototype.send = function (buffer) {
+      if (buffer instanceof ArrayBuffer && buffer.byteLength === 9 &&
+          this.label === 'fight') {
+        const immutable = buffer.slice(0);
+        const channel = this;
+        setTimeout(() => {
+          if (channel.readyState === 'open') originalSend.call(channel, immutable);
+        }, ms);
+        return;
+      }
+      return originalSend.call(this, buffer);
+    };
+  }, transportDelayMs);
+}
+
 const executablePath = process.env.CHROME_BIN ||
   (existsSync('/usr/bin/google-chrome') ? '/usr/bin/google-chrome' : undefined);
 const sleep = n => new Promise(r => setTimeout(r, n));
@@ -67,6 +93,7 @@ async function testCase(browser, { name, guestTouch }) {
     : { viewport: { width: 1280, height: 720 } });
   let host, guest;
   try {
+    await Promise.all([configureSimulatedDelay(ctxA), configureSimulatedDelay(ctxB)]);
     [host, guest] = await Promise.all([prepare(ctxA), prepare(ctxB)]);
     const a = host.page, b = guest.page;
     await b.locator('#nJoin').click();
@@ -154,6 +181,8 @@ async function testCase(browser, { name, guestTouch }) {
       differentFrameWarning: afterGuest[0].frame !== afterGuest[1].frame,
       hashMatchAtUnsynchronizedSamples: afterGuest[0].hash === afterGuest[1].hash,
       network: 'same CI host, ICE host-only; no STUN/TURN or ISP crossing',
+      artificialSendDelayMsPerDirection: transportDelayMs,
+      observedRollbacks: [afterGuest[0].rollbackCount, afterGuest[1].rollbackCount],
       mobile: guestTouch ? 'Chromium touchscreen emulation, not Android/iOS hardware'
         : 'desktop Chromium'
     };
@@ -198,6 +227,7 @@ try {
   console.log(JSON.stringify({
     status: 'PASS',
     scope: 'actual game between two independent Chromium contexts on one CI host',
+    artificialSendDelayMsPerDirection: transportDelayMs,
     chromeVersion: browser.version(), results,
     notVerified: ['real devices', 'cross-city/cross-carrier',
       'natural RTT jitter/packet-loss rollback quality',

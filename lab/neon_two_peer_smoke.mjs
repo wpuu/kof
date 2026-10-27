@@ -78,6 +78,8 @@ const sample = page => page.evaluate(() => ({
   p2x: Number(NEON.P2.x.toFixed(2)),
   p1hp: NEON.P1.hp, p2hp: NEON.P2.hp,
   remoteFrame: NEON.Net.remoteFrame, rollbackCount: NEON.DEBUG.rb,
+  historyCorrections: NEON.Net.historyCorrections ?? null,
+  unrecoverablyLate: NEON.Net.unrecoverablyLate ?? null,
   netRole: NEON.Net.role, active: NEON.Net.active,
   hash: NEON.hashGameState(NEON.Game, NEON.P1, NEON.P2)
 }));
@@ -96,7 +98,9 @@ async function checkpointAtSameFrame(pageA, pageB) {
           p1hp: NEON.P1.hp, p2hp: NEON.P2.hp,
           timer: NEON.Game.timer, phase: NEON.Game.phase,
           hash: NEON.hashGameState(NEON.Game, NEON.P1, NEON.P2),
-          rollbackCount: NEON.DEBUG.rb
+          rollbackCount: NEON.DEBUG.rb,
+          historyCorrections: NEON.Net.historyCorrections ?? null,
+          unrecoverablyLate: NEON.Net.unrecoverablyLate ?? null
         });
       } else {
         requestAnimationFrame(step);

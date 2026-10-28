@@ -1,0 +1,168 @@
+name: P0-013D GGRS nonzero-input 90ms+jitter loss 10x
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-013d-nonzero-10x.yml'
+      - 'lab/patch_matchbox_nonzero_input_probe.mjs'
+      - 'lab/matchbox_nonzero_input_web_smoke.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: JavaScript syntax and data sources preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check lab/patch_matchbox_state_probe.mjs
+          node --check lab/patch_matchbox_nonzero_input_probe.mjs
+          node --check lab/matchbox_nonzero_input_web_smoke.mjs
+          echo 'P0-013D JavaScript syntax PASS; upstream Rust build and gameplay not tested yet.' >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MATCHBOX_SHA: 9ed2495cd48c007f7a19e95dd5fcd64434b4879a
+      WASM_BINDGEN_VERSION: 0.2.129
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Rust and immutable upstream version
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          git clone -q --no-tags https://github.com/johanhelsing/matchbox.git upstream
+          git -C upstream checkout --detach "$MATCHBOX_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+          awk '/^name = "wasm-bindgen"$/ {getline; print; exit}' upstream/Cargo.lock | grep -F "$WASM_BINDGEN_VERSION"
+          rustc --version
+      - name: Add only CI-specific nonzero-input and state probes to temporary source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node lab/patch_matchbox_nonzero_input_probe.mjs upstream
+          git -C upstream diff --stat
+      - name: Compile a single optimized WASM game plus signaling binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream/examples/bevy_ggrs && cargo build --release --locked --target wasm32-unknown-unknown)
+          (cd upstream && cargo build --release --locked --package matchbox_server)
+          test -s upstream/target/wasm32-unknown-unknown/release/bevy_ggrs_example.wasm
+          test -s upstream/target/release/matchbox_server
+      - name: Install exact WASM binding CLI only once in this build job
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install --version "$WASM_BINDGEN_VERSION" --locked wasm-bindgen-cli
+      - name: Assemble internal deterministic CI artifact with checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-bundle/dist/assets/fonts ci-bundle/bin
+          wasm-bindgen --target web --no-typescript --out-dir ci-bundle/dist --out-name game \
+            upstream/target/wasm32-unknown-unknown/release/bevy_ggrs_example.wasm
+          cp lab/matchbox_official_index.html ci-bundle/dist/index.html
+          cp upstream/examples/bevy_ggrs/assets/fonts/quicksand-light.ttf ci-bundle/dist/assets/fonts/
+          cp upstream/examples/bevy_ggrs/assets/fonts/quicksand-light.txt ci-bundle/dist/assets/fonts/
+          cp upstream/target/release/matchbox_server ci-bundle/bin/matchbox_server
+          test -s ci-bundle/dist/game_bg.wasm
+          test -s ci-bundle/dist/game.js
+          wc -c ci-bundle/dist/game_bg.wasm
+          (cd ci-bundle && sha256sum dist/game_bg.wasm dist/game.js bin/matchbox_server > SHA256SUMS)
+          echo "Pinned Matchbox: $MATCHBOX_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "One WASM compile, then 10 independent actual browser tests use this same binary." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload immutable browser testing bundle once
+        uses: actions/upload-artifact@v4
+        with:
+          name: p0-013d-nonzero-ggrs-bundle
+          path: ci-bundle/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 1
+
+  ten-repetitions:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        repetition: [1,2,3,4,5,6,7,8,9,10]
+    env:
+      GGRS_EXTRA_SEND_DELAY_MS: '90'
+      GGRS_JITTER_MAX_MS: '20'
+      GGRS_DROP_FIRST_BURST: '5'
+      GGRS_REPETITION: ${{ matrix.repetition }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the same pinned already-compiled WASM/server
+        uses: actions/download-artifact@v4
+        with:
+          name: p0-013d-nonzero-ggrs-bundle
+          path: ci-bundle
+      - name: Verify upstream build artifact checksums (no rebuild)
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd ci-bundle && sha256sum -c SHA256SUMS)
+          chmod +x ci-bundle/bin/matchbox_server
+          test -s ci-bundle/dist/assets/fonts/quicksand-light.ttf
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser harness and validate syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          node --check lab/matchbox_nonzero_input_web_smoke.mjs
+          google-chrome --version
+      - name: Self-host signaling, prove real nonzero capture and test 90ms+/-20ms and 5 dropped sends
+        shell: bash
+        run: |
+          set -euo pipefail
+          (ci-bundle/bin/matchbox_server) > "$RUNNER_TEMP/matchbox-signal.log" 2>&1 &
+          SIGNAL_PID=$!
+          python3 -m http.server 1334 --bind 127.0.0.1 --directory ci-bundle/dist > "$RUNNER_TEMP/matchbox-static.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$SIGNAL_PID" "$WEB_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 1 http://127.0.0.1:1334/ >/dev/null && \
+               curl -fsS --max-time 1 http://127.0.0.1:3536/health >/dev/null; then
+              ok=1; break
+            fi
+            sleep 0.4
+          done
+          if [ "$ok" != 1 ]; then
+            echo 'Internal signaling or static server unavailable'
+            tail -40 "$RUNNER_TEMP/matchbox-signal.log" || true
+            exit 1
+          fi
+          node lab/matchbox_nonzero_input_web_smoke.mjs
+      - name: Preserve explicit acceptance limitations
+        if: always()
+        shell: bash
+        run: |
+          echo "Repetition ${{ matrix.repetition }}; local nonzero input arm, both handles applied nonzero, 5 consecutive subsequent DataChannel sends dropped, 90ms +/-20ms synthetic delay." >> "$GITHUB_STEP_SUMMARY"
+          echo "A PASS means both Chrome peers truly moved and quantized same-frame state matched in this brief sample; it is not a real cross-carrier RTT/fighting-game benchmark." >> "$GITHUB_STEP_SUMMARY"

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 const paths=[
   '.github/workflows/p0-014a-prediction-ab.yml',
   '.github/workflows/p0-014d-stalled-tap-latch.yml',
+  '.github/workflows/p0-014g-dom-edge.yml',
   '.github/workflows/p0-013d-nonzero-10x.yml'
 ];
 function artifactSteps(content,kind){

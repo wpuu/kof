@@ -32,7 +32,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
-extern "C" {
+unsafe extern "C" {
     #[wasm_bindgen(js_namespace = window, js_name = __kofCiLocalInput)]
     fn ci_local_input(handle: u32, frame: u32, mask: u8);
 
@@ -46,7 +46,7 @@ source=once(source,
   '        local_inputs.insert(*handle, BoxInput { inp: input });',
   `        if input != 0 {
             #[cfg(target_arch = "wasm32")]
-            ci_local_input(*handle as u32, frame_count.frame, input);
+            unsafe { ci_local_input(*handle as u32, frame_count.frame, input); }
         }
         local_inputs.insert(*handle, BoxInput { inp: input });`,file);
 source=once(source,
@@ -57,7 +57,7 @@ source=once(source,
   `        let input = inputs[p.handle].0.inp;
         if input != 0 {
             #[cfg(target_arch = "wasm32")]
-            ci_applied_input(p.handle as u32, frame_count.frame, input);
+            unsafe { ci_applied_input(p.handle as u32, frame_count.frame, input); }
         }`,file);
 writeFileSync(file,source);
 console.log('Installed test-only synchronous local-nonzero-input and rollback-applied-input wasm-bindgen hooks.');

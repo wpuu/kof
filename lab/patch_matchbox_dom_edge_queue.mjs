@@ -26,8 +26,16 @@ once('    fn ci_applied_input(handle: u32, frame: u32, mask: u8);',
 
     #[wasm_bindgen(js_namespace = window, js_name = __kofCiTakePendingTap)]
     fn ci_take_pending_tap(handle: u32) -> u8;`);
-once('        if input != 0 {\n            #[cfg(target_arch = "wasm32")]',
-`        // Consume a browser keydown edge captured earlier, even if GGRS
+// Restrict the anchor to read_local_inputs. The applied-input diagnostic
+// elsewhere in the file contains a second, deliberately similar if block.
+const begin=s.indexOf('pub fn read_local_inputs(');
+const finish=s.indexOf('pub fn setup_scene(',begin);
+if(begin<0||finish<begin)throw Error('ReadInputs scope missing');
+let inputBlock=s.slice(begin,finish);
+const anchor='        if input != 0 {\\n            #[cfg(target_arch = "wasm32")]';
+if(!inputBlock.includes(anchor)||inputBlock.indexOf(anchor)!==inputBlock.lastIndexOf(anchor))
+  throw Error('ReadInputs exact nonzero hook anchor missing');
+inputBlock=inputBlock.replace(anchor,`        // Consume a browser keydown edge captured earlier, even if GGRS
         // did not invoke ReadInputs during the original 120ms press.
         #[cfg(target_arch = "wasm32")]
         {
@@ -36,5 +44,6 @@ once('        if input != 0 {\n            #[cfg(target_arch = "wasm32")]',
         }
         if input != 0 {
             #[cfg(target_arch = "wasm32")]`);
+s=s.slice(0,begin)+inputBlock+s.slice(finish);
 writeFileSync(gamePath,s);
 console.log('Added experimental DOM-edge-to-GGRS input bridge to temporary original Bevy game.');

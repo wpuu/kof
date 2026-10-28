@@ -52,26 +52,56 @@ async function launch(label){
   const context=await browser.newContext({viewport:{width:960,height:640}});
   await context.addInitScript(({delayMs,burst,jitterMs,repetition,label})=>{
     window.__ciBrowserInputDiagnostics={
-      keys:[],maxEventLoopGapMs:0,intervalGapsOver100Ms:0
+      keys:[],maxEventLoopGapMs:0,intervalGapsOver100Ms:0,
+      intervalTicks:0,rafTicks:0,
+      longGaps:[],gapOverlapsKeys:[]
     };
+    function countRaf(){
+      const d=window.__ciBrowserInputDiagnostics;
+      d.rafTicks++;
+      requestAnimationFrame(countRaf);
+    }
+    requestAnimationFrame(countRaf);
     for(const typ of ['keydown','keyup']){
       window.addEventListener(typ,event=>{
         if(!['KeyW','KeyD'].includes(event.code))return;
-        window.__ciBrowserInputDiagnostics.keys.push({
+        const d=window.__ciBrowserInputDiagnostics;
+        d.keys.push({
           type:typ,code:event.code,tMs:Math.round(performance.now()),
           visible:document.visibilityState,
           focused:document.hasFocus(),
-          activeElement:document.activeElement?.tagName || 'none'
+          activeElement:document.activeElement?.tagName || 'none',
+          rafTicks:d.rafTicks,intervalTicks:d.intervalTicks
         });
+        if(typ==='keyup'){
+          const down=[...d.keys].reverse().find(k=>k.code===event.code&&k.type==='keydown');
+          if(down){
+            const release=d.keys.at(-1);
+            d.gapOverlapsKeys.push({
+              key:event.code,
+              elapsedMs:release.tMs-down.tMs,
+              rafCallbacksDuringPress:release.rafTicks-down.rafTicks,
+              timerCallbacksDuringPress:release.intervalTicks-down.intervalTicks,
+              overlappingLongGaps:d.longGaps.filter(g=>
+                g.toMs>=down.tMs&&g.fromMs<=release.tMs)
+            });
+          }
+        }
       },true);
     }
     let lastSample=performance.now();
     setInterval(()=>{
       const now=performance.now(),gap=now-lastSample;
-      lastSample=now;
       const d=window.__ciBrowserInputDiagnostics;
+      d.intervalTicks++;
       d.maxEventLoopGapMs=Math.max(d.maxEventLoopGapMs,Math.round(gap));
-      if(gap>100)d.intervalGapsOver100Ms++;
+      if(gap>100){
+        d.intervalGapsOver100Ms++;
+        if(d.longGaps.length<30)
+          d.longGaps.push({fromMs:Math.round(lastSample),
+            toMs:Math.round(now),durationMs:Math.round(gap)});
+      }
+      lastSample=now;
     },16);
     const original=RTCDataChannel.prototype.send;
     window.__ggrsImpairmentEnabled=false;

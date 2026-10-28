@@ -91,3 +91,8 @@
 - [C09｜真实非零键盘操作＋90ms±20ms＋五包丢失双轮对照](docs/2026-10-28/C09_P0_013D_10X_RESULTS.md)：[第一组 #40689108165](https://github.com/wpuu/kof/actions/runs/40689108165) **9/10**、[第二组 #40689765737](https://github.com/wpuu/kof/actions/runs/40689765737) **10/10**。累计 19/20，但首轮存在真实输入未被模拟应用的红灯，**并非稳定性已验收**。
 - [C10｜无需重编译 WASM 的输入卡帧诊断](docs/2026-10-28/C10_P0_014_INPUT_STALL_DIAGNOSIS.md)：[#40691032752](https://github.com/wpuu/kof/actions/runs/40691032752) 最终可继续操作，但记录到 **796ms** 的本地输入等待；不能把按键保持到成功应用当作产品解决。
 - [Issue #8：GGRS 预测停帧／本地输入未应用诊断与修复](https://github.com/wpuu/kof/issues/8) 正在推进。真实 Windows/华为/iPhone、Kawaks 公平对照、KOF 商用许可仍未完成。
+
+## 2026-10-28 P0-014A/B：真实输入等待和 GGRS 预测窗对照
+- [C11｜12/16/20 帧预测窗口受控实验、250ms 宽松输入等待否决线及证据口径](docs/2026-10-28/C11_P0_014A_WINDOW_COMPARISON.md)
+- [九场真实双浏览器 CI #40693239358](https://github.com/wpuu/kof/actions/runs/40693239358)：同一 Bevy/GGRS WASM 不同运行时窗口，90ms±20ms 发送抖动与 5 包真实丢弃；事件、停帧和按键采集→模拟应用时间均要记录。**结果以实际 CI 为准，不提前宣称窗口调参改善。**
+- [P0-014B 不丢包对照 CI 代码](.github/workflows/p0-014b-no-loss-baseline.yml)：由前项 workflow_run 完成触发，复用其 SHA-256 artifact，比较不加延迟与仅加 90ms 发送延迟两组，隔离“延迟”和“丢包”的影响。

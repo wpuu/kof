@@ -1,0 +1,33 @@
+name: P0 artifact upload-download configuration audit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-014a-prediction-ab.yml'
+      - '.github/workflows/p0-014d-stalled-tap-latch.yml'
+      - '.github/workflows/p0-013d-nonzero-10x.yml'
+      - '.github/workflows/p0-artifact-audit.yml'
+      - 'tests/workflow_artifact_consistency.test.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-names:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify internal upload/download artifact names before expensive builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check tests/workflow_artifact_consistency.test.mjs
+          node --test tests/workflow_artifact_consistency.test.mjs
+          echo 'Artifact name pairs have been checked for the listed multi-stage WASM workflows.' >> "$GITHUB_STEP_SUMMARY"

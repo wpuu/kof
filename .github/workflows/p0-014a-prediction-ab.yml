@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/p0-014a-prediction-ab.yml'
       - 'lab/patch_matchbox_prediction_probe.mjs'
       - 'lab/matchbox_prediction_window_comparison.mjs'
 
@@ -122,7 +121,7 @@ jobs:
       - name: Download the same pinned already-compiled WASM/server
         uses: actions/download-artifact@v4
         with:
-          name: p0-013d-nonzero-ggrs-bundle
+          name: p0-014a-window-comparison-bundle
           path: ci-bundle
       - name: Verify upstream build artifact checksums (no rebuild)
         shell: bash

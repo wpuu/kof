@@ -63,3 +63,20 @@
 - [合成延迟/丢包与真正浏览器状态验证](../../lab/matchbox_nonzero_input_web_smoke.mjs)
 - [编译一次，十轮使用同一个可校验 WASM](../../.github/workflows/p0-013d-nonzero-10x.yml)
 - [原验收合同 C08](C08_P0_013D_NONZERO_INPUT_10X.md)
+
+---
+
+## 六、第二次全量十轮：10/10 PASS，但第一轮红灯不消失
+
+本轮额外对 Rust 2024 test-only `wasm-bindgen` 外部声明改为 `unsafe extern`，并使用规范的 `unsafe { ... }` 调用。该变更**只针对测试钩子的编译兼容性**，没有改 GGRS 主体、预测窗口、网络发送/回滚算法，也没有改变严格验收逻辑。
+
+- [GitHub Actions #40689765737](https://github.com/wpuu/kof/actions/runs/40689765737) 完整 **SUCCESS**：新 WASM 单次编译、上传签名校验 artifact，十个独立测试 job **10/10 PASS、0 FAIL**。
+- 所有十个 job 都真实丢了 5 个 HOST 在非零本地输入采集以后发送的 GGRS DataChannel 包，`armedAfterNonzero=true`；HOST/GUEST 都在 `move_cube_system` 应用了玩家 0、1 的非零输入，双方第 180 帧量化移动状态一致。
+- 比如重复 3（上一组曾失败）：HOST 两角色非零应用计数分别为 51、50，GUEST 分别为 50、49，未见本次静默输入丢失。
+- 因两次测试发生在不同 runner 调度、WASM 测试钩子声明有规范化变更，不应将第二轮成功解释为已消除第一轮真实问题；也不能按 `19/20=95%` 推算真实联网用户的成功率。
+
+**目前可复核的全部短时实验：**第一组 `9 PASS/1 FAIL`，第二组 `10 PASS/0 FAIL`，合计 **19 PASS/1 FAIL**。该历史失败不能在项目验收材料中删除或标记为误报；它的本地输入未被实际模拟应用证据独立成立。
+
+**相关诊断**：[P0-014 #40691032752](https://github.com/wpuu/kof/actions/runs/40691032752) 在按键保持到模拟应用为止时虽然 3/3 最终成功，但本地捕获→应用实际等待达到 212、415、796ms，证实“哈希一致”和“玩家操作及时响应”是两个不同验收条件。[C10](C10_P0_014_INPUT_STALL_DIAGNOSIS.md) 和 [Issue #8](https://github.com/wpuu/kof/issues/8) 持续跟进。
+
+**决定：P0-013D 的重复实验执行已完成，但“高延迟下稳定且操作及时”的产品级验收仍 NOT PASS。**

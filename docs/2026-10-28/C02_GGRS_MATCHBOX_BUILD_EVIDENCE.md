@@ -55,3 +55,16 @@ GGRS + Matchbox 的完整源码实际编译及官方测试结果，已经明显�
 1. 若完整 WASM build PASS，使用官方示例代码及经允许的字体/临时素材、本地 `matchbox_server` 与 Playwright 验证**两独立浏览器同时进入实际房间**，不是只出现首页。
 2. 优先测真实双端输入/模拟帧与延迟统计。若浏览器 WebGL2、性能或打包阻塞，保留错误码和精确依赖，不删改仓库已有 V2 验证成果。
 3. 真正 KOF 98 模拟器的商用授权与确定性状态恢复是独立大门，不能用 Bevy 方块示例替代。
+
+## 2026-10-28 后续补充：完整 WASM 调试构建成功
+
+[GitHub Actions #40622591645](https://github.com/wpuu/kof/actions/runs/40622591645) 已完成：官方 Bevy/GGRS/Matchbox 例子的真正 `cargo build --locked -p bevy_ggrs_example --target wasm32-unknown-unknown` **PASS**。
+
+- 调试 WASM 实际文件体积：`1,137,742,340` 字节（约 1.14 GB），太大，不适合浏览器分发；
+- SHA-256: `f6b2a9b358719bcfb1e9f9c21cc5b17b1dabda7dfb7c9163a315dcff482acbeb`；
+- 实验室 CI 生成 `pinned-matchbox-bevy-ggrs-wasm` Actions artifact，只包含未优化编译产物，不是网页安装包；
+- 下一步为 `--release` 优化、匹配 `wasm-bindgen 0.2.129` JavaScript 绑定，并在实际 Chromium 启动：工作流 [p0-012-official-browser.yml](../../.github/workflows/p0-012-official-browser.yml)。不能将其进行中的运行解释为已通过。
+
+另找到官方 Matchbox `examples/simple`（不用 Bevy/显卡，只做 Rust WASM 可靠 WebRTC 消息），已建立独立 [p0-012-matchbox-simple.yml](../../.github/workflows/p0-012-matchbox-simple.yml) 的真正双浏览器消息互通验收。此实验可以将 WebRTC/信令问题与 Bevy WebGL2 渲染问题分开排除。
+
+**补充重要风险**：官方 `examples/bevy_ggrs/src/box_game.rs` 仍直接使用 `f32` 速度/位置、`powf(dt)`、`sqrt`、`sin/cos`。因此官方样例可用于证明技术连通，但不应未经跨架构检查就当作 Windows、Android、iOS 全部同帧确定性的商用格斗引擎。后续需整数或定点数模拟核心与不同设备同帧状态哈希。

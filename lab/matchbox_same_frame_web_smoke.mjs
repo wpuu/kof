@@ -48,13 +48,13 @@ async function launch(label){
   page.on('requestfailed',request=>{
     // Network failure for a required resource is always an error.
     const path=new URL(request.url()).pathname;
-    if(/\\.(wasm|js|ttf|png|woff2?)$/i.test(path))
+    if(/\.(wasm|js|ttf|png|woff2?)$/i.test(path))
       errors.push('network request failed: '+path);
   });
   page.on('console',msg=>{
     const txt=msg.text();
     if(/All peers have joined, going in-game/.test(txt))joined=true;
-    const found=/KOF_CI_STATE frame=(\\d+) state=(\\[[^\\]\\r\\n]*\\])/.exec(txt);
+    const found=/KOF_CI_STATE frame=(\d+) state=(\[[^\]\r\n]*\])/.exec(txt);
     if(found)snapshots.set(Number(found[1]),found[2]);
     if(msg.type()==='error') {
       if(/Failed to load resource:.*404/.test(txt))generic404Errors++;

@@ -1,0 +1,85 @@
+name: P0-012 Matchbox official simple WASM two-peer WebRTC
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-012-matchbox-simple.yml'
+      - 'lab/matchbox_simple_index.html'
+      - 'lab/matchbox_simple_web_smoke.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  original-simple-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MATCHBOX_SHA: 9ed2495cd48c007f7a19e95dd5fcd64434b4879a
+      WASM_BINDGEN_VERSION: 0.2.129
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout only lab files
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Stable Rust + wasm target + pinned upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          git clone -q --no-tags https://github.com/johanhelsing/matchbox.git matchbox-upstream
+          git -C matchbox-upstream checkout --detach "$MATCHBOX_SHA"
+          test "$(git -C matchbox-upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+          awk '/^name = "wasm-bindgen"$/ {getline; print; exit}' matchbox-upstream/Cargo.lock | grep -F "$WASM_BINDGEN_VERSION"
+      - name: Build original no-engine WebRTC Rust browser sample and signaling server
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd matchbox-upstream/examples/simple && cargo build --release --locked --target wasm32-unknown-unknown)
+          (cd matchbox-upstream && cargo build --release --locked --package matchbox_server)
+          test -s matchbox-upstream/target/wasm32-unknown-unknown/release/simple_example.wasm
+          sha256sum matchbox-upstream/target/wasm32-unknown-unknown/release/simple_example.wasm
+      - name: Install pinned JS binding generator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install --version "$WASM_BINDGEN_VERSION" --locked wasm-bindgen-cli
+      - name: Package the original simple WASM example for an internal static server
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist-simple
+          wasm-bindgen --target web --no-typescript --out-dir dist-simple --out-name simple \
+            matchbox-upstream/target/wasm32-unknown-unknown/release/simple_example.wasm
+          cp lab/matchbox_simple_index.html dist-simple/index.html
+          test -s dist-simple/simple_bg.wasm
+          wc -c dist-simple/simple_bg.wasm
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          node --check lab/matchbox_simple_web_smoke.mjs
+      - name: Self-host signaling and confirm actual browser-to-browser messages
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd matchbox-upstream && target/release/matchbox_server) > "$RUNNER_TEMP/simple-signaling.log" 2>&1 &
+          SIG_PID=$!
+          python3 -m http.server 1335 --bind 127.0.0.1 --directory dist-simple > "$RUNNER_TEMP/simple-web.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$SIG_PID" "$WEB_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 1 http://127.0.0.1:1335/ >/dev/null && \
+               (echo > /dev/tcp/127.0.0.1/3536) >/dev/null 2>&1; then
+              ready=1; break
+            fi
+            sleep 0.3
+          done
+          test "$ready" = 1
+          node lab/matchbox_simple_web_smoke.mjs
+      - name: Scope
+        if: always()
+        run: |
+          echo 'Real browser WebRTC messaging test for original Rust Matchbox simple example with self-hosted signaling; NOT Bevy/GGRS gameplay, rollback, ISP latency or physical mobile testing.' >> "$GITHUB_STEP_SUMMARY"

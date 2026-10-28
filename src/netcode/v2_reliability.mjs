@@ -158,6 +158,9 @@ export class ReliableInputPeer {
         }
         this.handshakeComplete = true;
         return { type: 'hello', accepted: true };
+      case PacketType.HELLO_ACK:
+        if (!this.handshakeComplete) throw new Error('HELLO required before HELLO_ACK');
+        return { type: 'hello_ack' };
       case PacketType.INPUT: {
         if (!this.handshakeComplete) throw new Error('HELLO required before INPUT');
         const { frame, mask } = msg;

@@ -39,11 +39,15 @@ async function launch(label){
   const snapshots=new Map();
   const errors=[], httpFailures=[];
   let generic404Errors=0;
-  let joined=false;
+  let joined=false, fontLoaded=false;
   page.on('response',response=>{
-    if(response.status()<400)return;
-    // Record just path and HTTP status. Do not leak query strings/SDP.
-    httpFailures.push({status:response.status(),path:new URL(response.url()).pathname});
+    const path=new URL(response.url()).pathname;
+    const status=response.status();
+    if(path==='/assets/fonts/quicksand-light.ttf'&&status>=200&&status<300)
+      fontLoaded=true;
+    if(status<400)return;
+    // Record only status/path. No user query, identity, ICE or SDP.
+    httpFailures.push({status,path});
   });
   page.on('requestfailed',request=>{
     // Network failure for a required resource is always an error.
@@ -64,6 +68,7 @@ async function launch(label){
   page.on('pageerror',e=>errors.push(e.name+':'+e.message.slice(0,160)));
   await page.goto(url.toString(),{waitUntil:'domcontentloaded',timeout:45000});
   return {label,browser,context,page,snapshots,errors,httpFailures,
+    get fontLoaded(){return fontLoaded;},
     get generic404Errors(){return generic404Errors;},get joined(){return joined;}};
 }
 function maxFrame(p){return Math.max(-1,...p.snapshots.keys());}
@@ -105,8 +110,14 @@ try{
   // An absent favicon is not a gameplay failure; any missing WASM/JS/
   // font/asset is. Generic Chrome 404 console text has no URL, so validate
   // it against the response-level paths rather than suppressing all 404s.
-  const unexpectedFailures=[...a.httpFailures,...b.httpFailures]
-    .filter(f=>!(f.status===404&&f.path==='/favicon.ico'));
+  const optionalMissingMetadata='/assets/fonts/quicksand-light.ttf.meta';
+  const isOptional=(f,p)=>f.status===404&&(
+    f.path==='/favicon.ico' ||
+    (f.path===optionalMissingMetadata&&p.fontLoaded));
+  const unexpectedFailures=[a,b].flatMap(p=>
+    p.httpFailures.filter(f=>!isOptional(f,p)));
+  if(!a.fontLoaded||!b.fontLoaded)
+    throw new Error('Game font itself did not return HTTP 2xx on both peers');
   if(unexpectedFailures.length||a.errors.length||b.errors.length)
     throw new Error('Required browser resource/runtime errors: '+
       JSON.stringify({unexpectedFailures,
@@ -116,6 +127,9 @@ try{
     checkpointFrame:frame,
     stateFingerprintMatch:true,
     resourceDiagnostics:{
+      fontLoaded:[a.fontLoaded,b.fontLoaded],
+      ignoredOptionalFontMeta404:[a,b].flatMap(p=>
+        p.httpFailures.filter(f=>isOptional(f,p)&&f.path===optionalMissingMetadata)).length,
       ignoredFavicon404:[...a.httpFailures,...b.httpFailures]
         .filter(f=>f.status===404&&f.path==='/favicon.ico').length,
       otherErrors:unexpectedFailures.length,
@@ -137,6 +151,7 @@ try{
       lastSimFrame:maxFrame(player),sampleCount:player.snapshots.size,
       lastStates:[...player.snapshots.entries()].slice(-3),
       httpFailures:player.httpFailures.slice(0,8),
+      fontLoaded:player.fontLoaded,
       generic404Errors:player.generic404Errors,
       errors:player.errors.slice(0,3)}));
   }

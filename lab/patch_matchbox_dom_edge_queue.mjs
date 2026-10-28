@@ -32,7 +32,7 @@ const begin=s.indexOf('pub fn read_local_inputs(');
 const finish=s.indexOf('pub fn setup_scene(',begin);
 if(begin<0||finish<begin)throw Error('ReadInputs scope missing');
 let inputBlock=s.slice(begin,finish);
-const anchor='        if input != 0 {\\n            #[cfg(target_arch = "wasm32")]';
+const anchor='        if input != 0 {\n            #[cfg(target_arch = "wasm32")]';
 if(!inputBlock.includes(anchor)||inputBlock.indexOf(anchor)!==inputBlock.lastIndexOf(anchor))
   throw Error('ReadInputs exact nonzero hook anchor missing');
 inputBlock=inputBlock.replace(anchor,`        // Consume a browser keydown edge captured earlier, even if GGRS

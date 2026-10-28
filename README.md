@@ -68,3 +68,9 @@
 - [C01｜Fightcade / SNK 98UMFE / GGRS / Matchbox / Extreme Bevy / Tough Love Arena / Slippi / RMG-K，附 Reddit、B站社区反馈及许可证](docs/2026-10-28/C01_NETPLAY_SUCCESS_CASES.md)
 - [P0-012｜比较 GGRS＋Matchbox 成熟浏览器回滚架构与现有 JS V2](https://github.com/wpuu/kof/issues/6)：按真实代码、同帧哈希、延迟/丢包和手机异网测量做选择，**不是立即替换所有现有代码**。
 - 当前 V2 的 25/25 纯协议单测和同机五包补发已通过；**Neon Fist 真游戏集成 #40541315755 仍失败，双方进入 VOID/MALFORMED**。不得宣传为上线成功。
+
+## 2026-10-28 P0-012 实际进展
+- [最新权威执行状态、已完成与未验收项](docs/2026-10-28/STATUS.md)
+- [C02 GGRS/Matchbox 官方源码实际编译和测试证据](docs/2026-10-28/C02_GGRS_MATCHBOX_BUILD_EVIDENCE.md)
+- [C03 JS V2 与 GGRS 现阶段真实 CI 对比、时间戳/握手修复及压测结果](docs/2026-10-28/C03_V2_VS_GGRS_COMPARE_EVIDENCE.md)
+- [GitHub Issue #6：成熟架构可复现双浏览器对照](https://github.com/wpuu/kof/issues/6)

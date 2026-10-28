@@ -50,6 +50,7 @@ const implementation = `const Net = (()=>{
     Game.paused=true;
     Net.voided=true;
     Net.voidReason=info.reason;
+    Net.voidDetail=String(info.detail||'').slice(0,180);
     document.getElementById('netui').style.display='flex';
     say('MATCH UNVERIFIED / VOID: '+String(info.reason)+' — no trusted score');
   }
@@ -68,7 +69,7 @@ const implementation = `const Net = (()=>{
       currentFrame:()=>active?Game.frame:0,
       onInput:onRemoteInput,
       onReady:()=>{
-        Net.voided=false;Net.voidReason=null;Net.rollbackTo=undefined;
+        Net.voided=false;Net.voidReason=null;Net.voidDetail=null;Net.rollbackTo=undefined;
         active=true;remoteFrame=-1;
         Game.paused=false;Game.cpu=false;
         Sim.init();
@@ -104,7 +105,7 @@ const implementation = `const Net = (()=>{
   }
   return {
     rollbackTo:undefined,remoteChk:new Uint32Array(64),
-    desync:false,voided:false,voidReason:null,
+    desync:false,voided:false,voidReason:null,voidDetail:null,
     get active(){return active && !!session?.ready && !Net.voided;},
     get role(){return role;},
     get localPlayer(){return role==='host'?0:1;},

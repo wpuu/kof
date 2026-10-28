@@ -33,6 +33,7 @@ export function createV2ChannelSession({
   let ready = false;
   let disposed = false;
   let helloSent = false;
+  let helloAcked = false;
   let aborted = null;
   const metrics = {
     fastIncoming: 0, controlIncoming: 0,
@@ -72,7 +73,7 @@ export function createV2ChannelSession({
 
   function becomeReady() {
     if (ready || disposed || aborted || !peer.handshakeComplete ||
-        !isOpen(control) || !isOpen(fast)) return;
+        !helloAcked || !isOpen(control) || !isOpen(fast)) return;
     ready = true;
     try { onReady(); }
     catch { notifyAbort(AbortReason.MALFORMED, 'game ready callback failed'); }
@@ -93,6 +94,13 @@ export function createV2ChannelSession({
       const result = peer.receive(raw, { currentSimFrame: currentFrame() });
       switch (result.type) {
         case 'hello':
+          // Reliable HELLO_ACK proves the remote endpoint has processed
+          // our HELLO; game inputs must never race ahead of that proof.
+          sendControl(peer.pack(PacketType.HELLO_ACK, {}));
+          becomeReady();
+          break;
+        case 'hello_ack':
+          helloAcked = true;
           becomeReady();
           break;
         case 'input':

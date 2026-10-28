@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>P0-012 Matchbox Original Simple WebRTC Example</title></head>
+<body><p>Matchbox official WebRTC simple example. Watch the browser console for peer exchange.</p>
+<script type="module">
+import init from './simple.js';
+window.__kofMatchboxSimpleState='loading';
+try{
+  await init();
+  window.__kofMatchboxSimpleState='initialized';
+}catch(e){
+  window.__kofMatchboxSimpleState='error:'+String(e?.name || 'unknown');
+  console.error('Matchbox WASM initialization error',e);
+}
+</script>
+</body></html>

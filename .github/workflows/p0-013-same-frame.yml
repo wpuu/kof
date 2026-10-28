@@ -1,0 +1,110 @@
+name: P0-013 Bevy GGRS synchronized input-state proof
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-013-same-frame.yml'
+      - 'lab/matchbox_same_frame_web_smoke.mjs'
+      - 'lab/patch_matchbox_state_probe.mjs'
+      - 'lab/matchbox_official_index.html'
+
+permissions:
+  contents: read
+
+jobs:
+  official-wasm-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      MATCHBOX_SHA: 9ed2495cd48c007f7a19e95dd5fcd64434b4879a
+      WASM_BINDGEN_VERSION: 0.2.129
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout test harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Stable Rust, WASM target, pinned external source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          git clone -q --no-tags https://github.com/johanhelsing/matchbox.git matchbox-upstream
+          git -C matchbox-upstream checkout --detach "$MATCHBOX_SHA"
+          test "$(git -C matchbox-upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+          awk '/^name = "wasm-bindgen"$/ {getline; print; exit}' matchbox-upstream/Cargo.lock | grep -F "$WASM_BINDGEN_VERSION"
+          rustc --version
+      - name: Add CI-only deterministic state probe to official game source
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check lab/patch_matchbox_state_probe.mjs
+          node lab/patch_matchbox_state_probe.mjs matchbox-upstream
+          git -C matchbox-upstream diff --stat
+      - name: Compile optimized official WASM browser example and native signaling server
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd matchbox-upstream/examples/bevy_ggrs && cargo build --release --locked --target wasm32-unknown-unknown)
+          (cd matchbox-upstream && cargo build --release --locked --package matchbox_server)
+          test -s matchbox-upstream/target/wasm32-unknown-unknown/release/bevy_ggrs_example.wasm
+          wc -c matchbox-upstream/target/wasm32-unknown-unknown/release/bevy_ggrs_example.wasm
+          sha256sum matchbox-upstream/target/wasm32-unknown-unknown/release/bevy_ggrs_example.wasm
+      - name: Install exact matching WASM JS binding generator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install --locked wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION"
+          wasm-bindgen --version
+      - name: Prepare internal browser demo, not a public deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          wasm-bindgen --target web --no-typescript --out-dir dist --out-name game \
+            matchbox-upstream/target/wasm32-unknown-unknown/release/bevy_ggrs_example.wasm
+          cp lab/matchbox_official_index.html dist/index.html
+          # Font belongs to original sample; it is used only internally by CI,
+          # never uploaded or distributed from the user project.
+          mkdir -p dist/assets/fonts
+          cp matchbox-upstream/examples/bevy_ggrs/assets/fonts/quicksand-light.ttf dist/assets/fonts/
+          test -s dist/game_bg.wasm
+          test -s dist/game.js
+          wc -c dist/game_bg.wasm dist/game.js
+      - name: Install actual Chromium test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          node --check lab/matchbox_same_frame_web_smoke.mjs
+          command -v google-chrome
+          google-chrome --version
+      - name: Self-host Matchbox and compare two Chrome game inputs on the same rollback frame
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd matchbox-upstream && target/release/matchbox_server) > "$RUNNER_TEMP/matchbox-signal.log" 2>&1 &
+          SIGNAL_PID=$!
+          python3 -m http.server 1334 --bind 127.0.0.1 --directory dist > "$RUNNER_TEMP/matchbox-static.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$SIGNAL_PID" "$WEB_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 90); do
+            if curl -fsS --max-time 1 http://127.0.0.1:1334/ >/dev/null && \
+               (echo > /dev/tcp/127.0.0.1/3536) >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 0.4
+          done
+          test "$ready" = 1 || { echo 'Internal signaling or static server unavailable'; exit 1; }
+          node lab/matchbox_same_frame_web_smoke.mjs
+      - name: Report verification boundaries
+        if: always()
+        shell: bash
+        run: |
+          echo "Official Bevy/GGRS/Matchbox game compiled with CI-only rollback component position/velocity trace in a temporary clone. Actual Chrome observations, if successful, appear in job logs." >> "$GITHUB_STEP_SUMMARY"
+          echo "Does not imply iOS/Android hardware support, real carrier NAT/TURN, KOF rights, or gameplay benchmark superiority to Kawaks." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,76 @@
+name: P0-012 Matchbox official source build baseline
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-012-matchbox.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  signaling-server:
+    name: Matchbox pinned signaling server (native)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      MATCHBOX_SHA: 9ed2495cd48c007f7a19e95dd5fcd64434b4879a
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare stable Rust and pin upstream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+          cargo --version
+          git clone -q --no-tags https://github.com/johanhelsing/matchbox.git matchbox-upstream
+          git -C matchbox-upstream checkout --detach "$MATCHBOX_SHA"
+          test "$(git -C matchbox-upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+          test -f matchbox-upstream/Cargo.lock
+          echo "Matchbox pinned SHA: $MATCHBOX_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify server compiles from locked dependencies
+        working-directory: matchbox-upstream
+        run: cargo check --locked --package matchbox_server
+      - name: Run signaling integration and unit tests
+        working-directory: matchbox-upstream
+        run: cargo test --locked --package matchbox_signaling
+      - name: Limit of conclusion
+        if: always()
+        run: |
+          echo 'A pass proves native source build and existing signaling tests, not actual browser P2P nor Chinese carrier performance.' >> "$GITHUB_STEP_SUMMARY"
+
+  browser-wasm:
+    name: GGRS + Matchbox official Bevy example (wasm compile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      MATCHBOX_SHA: 9ed2495cd48c007f7a19e95dd5fcd64434b4879a
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install stable Rust with browser target and pin upstream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          rustc --version
+          git clone -q --no-tags https://github.com/johanhelsing/matchbox.git matchbox-upstream
+          git -C matchbox-upstream checkout --detach "$MATCHBOX_SHA"
+          test "$(git -C matchbox-upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+      - name: Verify upstream browser GGRS + Matchbox example compiles as WASM
+        working-directory: matchbox-upstream
+        run: cargo check --locked --package bevy_ggrs_example --target wasm32-unknown-unknown
+      - name: Limit of conclusion
+        if: always()
+        run: |
+          echo 'A pass proves Rust/WASM typechecking of the upstream Bevy/GGRS/Matchbox example. It does NOT prove link, page rendering, two real players or phone network quality.' >> "$GITHUB_STEP_SUMMARY"

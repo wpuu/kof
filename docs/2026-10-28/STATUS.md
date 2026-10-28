@@ -93,3 +93,11 @@ GitHub 执行：[Issue #7](https://github.com/wpuu/kof/issues/7) 保持 OPEN；�
 - [C10 原始时延及下一步诊断合同](C10_P0_014_INPUT_STALL_DIAGNOSIS.md)。
 
 **状态决定**：GGRS+Matchbox 仍为优先研究技术基线，但不能将当前结果报告为 100% 稳定、低延迟或已优于 Kawaks 1.45。下轮优先诊断 GGRS 预测窗口/停帧/本地按键调度，不能通过无限延长键按压掩盖故障。
+
+## 2026-10-28 当日第二轮全量结果与新的优先阻断
+
+此前待回收的 Rust2024 FFI 兼容重复 [#40689765737](https://github.com/wpuu/kof/actions/runs/40689765737) 已最终 **SUCCESS：10/10 测试通过**。此前 [#40689108165](https://github.com/wpuu/kof/actions/runs/40689108165) 仍为 **9/10**。两组观察为 **19/20**，不可将第二轮成功当作第 3 轮已被证明不存在的问题，也不可推导真实 ISP 游戏成功率。
+
+新增独立 [Issue #8：本地输入捕获后由于 GGRS 帧推进/等包调度而可能没有被应用](https://github.com/wpuu/kof/issues/8)。[C10](C10_P0_014_INPUT_STALL_DIAGNOSIS.md) 的真实诊断显示即使按键一直保持到执行，也可能有 **796ms** 的捕获→模拟应用等待，远远不能作为高品质格斗手感的依据。
+
+**下阶段从 P0-013D 转入 P0-014A：必须记录预测窗口/WaitRecommendation/长时间停帧以及输入排队生命周期，找出玩家按键延后或丢失的根因，再进行对照修复。** 原型技术路线 GGRS＋Matchbox 仍优先；公开收费/授权 KOF98/真机异网达标仍 NO-GO。

@@ -81,3 +81,8 @@
 - [2026-10-28/C06｜GGRS＋Matchbox 双独立 Chrome 真正输入后的同帧一致性正式 PASS](docs/2026-10-28/C06_P0_013_SAME_FRAME_PASS.md)：[CI #40674697739](https://github.com/wpuu/kof/actions/runs/40674697739)，第 180 帧 P1/P2 运动状态一致。仍不代表真实手机异网。
 
 - [C07｜GGRS＋Matchbox 双浏览器实际 0/45/90ms 延迟与 4/5 连丢四项测试 PASS](docs/2026-10-28/C07_P0_013_GGRS_IMPAIRMENT_PASS.md)：[CI #40674731228](https://github.com/wpuu/kof/actions/runs/40674731228)；同机第 180 帧状态一致、双方均真实移动，未进行跨运营商或 KOF 模拟器对照。
+
+## 2026-10-28 P0-013D：真实非零输入对齐的重复联机验收
+- [C08｜严谨实验口径及真实 CI 任务](docs/2026-10-28/C08_P0_013D_NONZERO_INPUT_10X.md)
+- [Actions #40689108165](https://github.com/wpuu/kof/actions/runs/40689108165)：采用 test-only Rust/WASM 输入采集与回滚应用钩子，**捕获首个非零操作后**才对 HOST 丢 5 个 GGRS 不可靠发送包，叠加 90ms±20ms 发送抖动。只构建一个 WASM，再在 10 个隔离 runner 中重复验证；静态预检已通过，其余结果以实际 CI 为准。
+- 本项**不是**跨运营商真实网络，也未证明被丢的每个编码包都含非零按键帧；暂不宣称“10 次通过”或明显优于 Kawaks。

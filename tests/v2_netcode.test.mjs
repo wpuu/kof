@@ -26,7 +26,8 @@ test('V2 codec roundtrips all bounded message types', () => {
     mk(P.INPUT_ACK, { through: -1, bitmap: 0x80000001 }),
     mk(P.RESEND_REQUEST, { frames: [0, 3, 7, 11, 12] }),
     mk(P.FRAME_HASH, { frame: 99, hash: 0xfedcba98 }),
-    mk(P.MATCH_ABORT, { reason: AbortReason.UNRECOVERABLE_INPUT })
+    mk(P.MATCH_ABORT, { reason: AbortReason.UNRECOVERABLE_INPUT }),
+    mk(P.HELLO_ACK)
   ];
   for (const sample of samples) {
     assert.deepEqual(
@@ -268,4 +269,21 @@ test('Simulated 90ms one-way lag + four lost frames aborts safely before trusted
   assert.notEqual(abortAt, null, 'critical history gap is not silently ignored');
   assert.ok(abortAt <= 15, 'unsafe frame causes prompt fail-closed state');
   assert.equal(b.aborted, true);
+});
+
+test('V2 HELLO_ACK is a strictly empty, typed message and never grants early readiness', () => {
+  const ack = mk(P.HELLO_ACK);
+  assert.equal(ack.byteLength, HEADER_BYTES);
+  assert.equal(decodePacket(ack).type, P.HELLO_ACK);
+  const padded = new Uint8Array([...ack, 0]);
+  assert.throws(() => decodePacket(padded), /length/);
+  const source = new ReliableInputPeer({
+    matchId: MATCH_ID, role: 0, configFingerprint: 12
+  });
+  assert.throws(() => source.receive(ack), /HELLO required/);
+  const sender = new ReliableInputPeer({
+    matchId: MATCH_ID, role: 1, configFingerprint: 12
+  });
+  assert.equal(source.receive(sender.hello()).accepted, true);
+  assert.equal(source.receive(ack).type, 'hello_ack');
 });

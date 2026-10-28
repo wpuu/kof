@@ -88,6 +88,6 @@
 - 本项**不是**跨运营商真实网络，也未证明被丢的每个编码包都含非零按键帧；暂不宣称“10 次通过”或明显优于 Kawaks。
 
 ## 2026-10-28 P0-013D／P0-014 最新真实进展
-- [C09｜真实非零键盘操作＋90ms±20ms＋五包丢失 10x：9 PASS / 1 FAIL](docs/2026-10-28/C09_P0_013D_10X_RESULTS.md)，[#40689108165](https://github.com/wpuu/kof/actions/runs/40689108165)。失败第 3 轮“本地输入被 Rust 采集但未被 GGRS 模拟应用”，**并非 100% 流畅达标**。
+- [C09｜真实非零键盘操作＋90ms±20ms＋五包丢失双轮对照](docs/2026-10-28/C09_P0_013D_10X_RESULTS.md)：[第一组 #40689108165](https://github.com/wpuu/kof/actions/runs/40689108165) **9/10**、[第二组 #40689765737](https://github.com/wpuu/kof/actions/runs/40689765737) **10/10**。累计 19/20，但首轮存在真实输入未被模拟应用的红灯，**并非稳定性已验收**。
 - [C10｜无需重编译 WASM 的输入卡帧诊断](docs/2026-10-28/C10_P0_014_INPUT_STALL_DIAGNOSIS.md)：[#40691032752](https://github.com/wpuu/kof/actions/runs/40691032752) 最终可继续操作，但记录到 **796ms** 的本地输入等待；不能把按键保持到成功应用当作产品解决。
 - [Issue #8：GGRS 预测停帧／本地输入未应用诊断与修复](https://github.com/wpuu/kof/issues/8) 正在推进。真实 Windows/华为/iPhone、Kawaks 公平对照、KOF 商用许可仍未完成。

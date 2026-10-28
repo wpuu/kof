@@ -43,3 +43,10 @@ Matchbox 官方 `examples/bevy_ggrs/src/box_game.rs` 使用 `f32` 状态、`powf
 
 - [C04 的完整证据](C04_MATCHBOX_GGRS_REAL_BROWSER_PASS.md)；[Issue #7](https://github.com/wpuu/kof/issues/7) 建立真实同帧状态/丢包/包体优化专项。
 - 只是**进入游戏成功**，当前没有双方按键后的同帧 hash 验证；不可宣称真实 KOF 或移动网络比 Kawaks 流畅。
+
+## 2026-10-28 后续运行：P0-013 与轻量 Matchbox 子样例状态
+
+- [P0-013 测试用 GGRS 同帧状态仪表](../../lab/patch_matchbox_state_probe.mjs) 与 [双 Chrome 操作后同帧比较测试](../../lab/matchbox_same_frame_web_smoke.mjs) 已真实提交；[CI #40625225372](https://github.com/wpuu/kof/actions/runs/40625225372) 在本次记录时仍执行构建/测试，**未宣称通过**。
+- Matchbox `examples/simple` 独立 WebRTC 消息测试 **#40624013750 与 #40624455349 失败**：双方 WASM 初始化和 WebSocket 创建成功，但未收到预期 `Peer joined` 或 `hello friend!` 日志；[#40625018044](https://github.com/wpuu/kof/actions/runs/40625018044) 改为明确 IPv4 地址和 `?next=2` 双人房间后仍失败。原因尚未证实，不能将源码编译完成说成消息通道可用。
+- 这与已**成功**的官方完整 Bevy/GGRS [CI #40623334349](https://github.com/wpuu/kof/actions/runs/40623334349) 是不同子项目、不同验收场景；后者已确认双方加入同一 GGRS 游戏房间，但尚未量化游戏输入的同帧状态。
+- 不复制上传 ROM、不使用 KOF 素材、不收费。还需检查新的同帧一致性 CI 后确定后续架构是否可进一步验收。

@@ -36,3 +36,10 @@ Matchbox 官方 `examples/bevy_ggrs/src/box_game.rs` 使用 `f32` 状态、`powf
 - `lab/matchbox_simple_web_smoke.mjs`
 - `lab/neon_v2_impairment_smoke.mjs`
 - [GitHub Issue #6：成熟架构对照](https://github.com/wpuu/kof/issues/6)。
+
+## 实际完成记录追加：官方 GGRS/Matchbox 两浏览器页面成功
+
+此前列为进行中的 [#40623334349](https://github.com/wpuu/kof/actions/runs/40623334349) 已 **SUCCESS**：优化 WASM 经绑定后 88,118,190B，两独立 Chrome 正常初始化画布，自建 Matchbox 信令真正配对，双方都输出 `All peers have joined, going in-game`。
+
+- [C04 的完整证据](C04_MATCHBOX_GGRS_REAL_BROWSER_PASS.md)；[Issue #7](https://github.com/wpuu/kof/issues/7) 建立真实同帧状态/丢包/包体优化专项。
+- 只是**进入游戏成功**，当前没有双方按键后的同帧 hash 验证；不可宣称真实 KOF 或移动网络比 Kawaks 流畅。

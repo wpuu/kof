@@ -72,3 +72,24 @@ Matchbox 官方 `examples/bevy_ggrs/src/box_game.rs` 使用 `f32` 状态、`powf
 6. 所有第三方版权及运营资质独立审批：不集成未授权的 SNK ROM，不开启有价天数竞猜。
 
 GitHub 执行：[Issue #7](https://github.com/wpuu/kof/issues/7) 保持 OPEN；此轮 P0-013A/B/C 的已完成短时测试结果可以封存，产品验收继续进行。
+
+---
+
+## 2026-10-28 P0-013D/014 后续真实执行和安全边界
+
+### P0-013D：非零输入对齐十轮，有明确红灯
+
+- [真实十轮 CI #40689108165](https://github.com/wpuu/kof/actions/runs/40689108165) 的 Rust/WebAssembly 构建和测试前预检成功，十个独立 Chrome 对局 job 真实执行，**9 PASS / 1 FAIL**。全部用同一份短期 SHA-256 校验后的 WASM／信令二进制，无须逐轮重新编译。
+- 具体失败在第 3 轮：Guest 在 GGRS frame=133 收到非零右移动输入 `mask=8`，但真实 `move_cube_system` 在两端均未消费其 player handle=0 的非零输入；其角色没有发生预期移动。**同帧状态一致不等于用户输入成功。**
+- 丢包限定为 HOST 真正采到非零玩家输入后启动的 5 个不可靠 WebRTC 发送包，90ms±20ms 人工发送等待。尚不能宣称每个被丢的编码包都承载一个非零游戏输入帧。
+- [C09 十轮原始成功／失败及详细状态](C09_P0_013D_10X_RESULTS.md)、[C08 验收合同](C08_P0_013D_NONZERO_INPUT_10X.md)。
+- Rust 2024 `unsafe extern` 兼容更新版重复运行 [#40689765737](https://github.com/wpuu/kof/actions/runs/40689765737) 独立保留证据；在其最终输出核实前不得将它合并当作第二十次全部通过。
+
+### P0-014：测量出不合格的本地输入等待
+
+- 新 [Issue #8](https://github.com/wpuu/kof/issues/8) 专项处理“本地输入已经捕获但模拟没有及时应用”的可能停帧/输入覆盖问题。
+- [CI #40691032752](https://github.com/wpuu/kof/actions/runs/40691032752) 使用上一运行生成的已校验 WASM artifact，**跨 GitHub run 复用**，没有重新编译。方向键保持至真实模拟应用后，3 个诊断样本都最终同帧一致、双端真实操作生效。
+- 但采集→应用的 Host 等待为 **212ms / 796ms / 415ms**，最大约 796ms；这是当前原型在合成恶劣网络下不满足格斗游戏手感目标的真实技术阻断。
+- [C10 原始时延及下一步诊断合同](C10_P0_014_INPUT_STALL_DIAGNOSIS.md)。
+
+**状态决定**：GGRS+Matchbox 仍为优先研究技术基线，但不能将当前结果报告为 100% 稳定、低延迟或已优于 Kawaks 1.45。下轮优先诊断 GGRS 预测窗口/停帧/本地按键调度，不能通过无限延长键按压掩盖故障。

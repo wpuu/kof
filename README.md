@@ -96,3 +96,10 @@
 - [C11｜12/16/20 帧预测窗口受控实验、250ms 宽松输入等待否决线及证据口径](docs/2026-10-28/C11_P0_014A_WINDOW_COMPARISON.md)
 - [九场真实双浏览器 CI #40693239358](https://github.com/wpuu/kof/actions/runs/40693239358)：同一 Bevy/GGRS WASM 不同运行时窗口，90ms±20ms 发送抖动与 5 包真实丢弃；事件、停帧和按键采集→模拟应用时间均要记录。**结果以实际 CI 为准，不提前宣称窗口调参改善。**
 - [P0-014B 不丢包对照 CI 代码](.github/workflows/p0-014b-no-loss-baseline.yml)：由前项 workflow_run 完成触发，复用其 SHA-256 artifact，比较不加延迟与仅加 90ms 发送延迟两组，隔离“延迟”和“丢包”的影响。
+
+## 2026-10-28 P0-014 当前输入及时性阻断与实验结果
+- [C12｜对应 ggrs 0.13.0/bevy_ggrs 0.22.0 的实际源码、九场预测窗、六场无丢包、短按键与 DOM/rAF 诊断](docs/2026-10-28/C12_P0_014_INPUT_LATENCY_SOURCE_AND_CI.md)
+- [预测窗口 12/16/20 真浏览器九场重放 #40695058730](https://github.com/wpuu/kof/actions/runs/40695058730)：仅 7/9 在宽松 250ms 等待线以内；16 帧 3/3、12/20 帧 2/3，**样本太少不能直接修改正式引擎参数**。
+- [无故障短按 #40695528313](https://github.com/wpuu/kof/actions/runs/40695528313) 0/9；[加故障短按 #40694770306](https://github.com/wpuu/kof/actions/runs/40694770306) 0/9；[DOM 时间对齐 #40696771661](https://github.com/wpuu/kof/actions/runs/40696771661) 确认按键到达 Canvas 但按住期间 requestAnimationFrame 0 次（仅 CI 无头 Chrome）。
+- [P0-014G 测试专用 DOM 按键边沿队列与 Rust 交接](.github/workflows/p0-014g-dom-edge.yml) 已开始受控验证。**严禁将测试专用按键 OR 队列商用或宣称已解决所有招式输入问题。**
+- [CI artifact 上传/下载名自动静态审计](.github/workflows/p0-artifact-audit.yml) 通过，解决此前复制工作流导致的假失败。产品级 60Hz 输入体验及真实手机／ISP 对照仍 NO-GO。

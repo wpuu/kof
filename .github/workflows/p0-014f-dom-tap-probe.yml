@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/p0-014f-dom-tap-probe.yml'
+      - 'lab/matchbox_short_tap_dom_diagnostic.mjs'
   workflow_dispatch:
 
 permissions:
@@ -92,5 +93,5 @@ jobs:
         if: always()
         shell: bash
         run: |
-          echo "Prediction window 12, seed ${{ matrix.repetition }}; 120ms key down/up, 0 or 90ms artificial delay and ${{ matrix.lost }} dropped fast sends. Diagnose DOM events, focus, event-loop gaps, Rust local nonzero and actual simulator inputs." >> "$GITHUB_STEP_SUMMARY"
+          echo "Prediction window 12, seed ${{ matrix.repetition }}; 120ms key down/up, 0 or 90ms artificial delay and ${{ matrix.lost }} dropped fast sends. Diagnose DOM focus, exact RAF/timer callback counts DURING each physical tap and timestamp-aligned event-loop gaps, versus Rust nonzero sampling." >> "$GITHUB_STEP_SUMMARY"
           echo "Any missed key remains a FAIL. Preserve DOM keydown/keyup and event-loop-gap diagnostics to distinguish Chrome headless scheduling from GGRS input overwrite. Do not claim true phone hardware compatibility." >> "$GITHUB_STEP_SUMMARY"

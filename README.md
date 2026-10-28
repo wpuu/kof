@@ -77,3 +77,5 @@
 
 - [C04｜官方 GGRS＋Matchbox 已在真正两独立 Chrome 中加载优化 WASM、自建信令并进入同一游戏](docs/2026-10-28/C04_MATCHBOX_GGRS_REAL_BROWSER_PASS.md)；**不是同帧位置/hash 或真机质量验收**。
 - [P0-013｜同帧确定性、真实操作、丢包与约 88MB WASM 体积优化](https://github.com/wpuu/kof/issues/7)；任务已创建，未完成。
+
+- [2026-10-28/C06｜GGRS＋Matchbox 双独立 Chrome 真正输入后的同帧一致性正式 PASS](docs/2026-10-28/C06_P0_013_SAME_FRAME_PASS.md)：[CI #40674697739](https://github.com/wpuu/kof/actions/runs/40674697739)，第 180 帧 P1/P2 运动状态一致。仍不代表真实手机异网。

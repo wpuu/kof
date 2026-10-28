@@ -287,3 +287,18 @@ test('V2 HELLO_ACK is a strictly empty, typed message and never grants early rea
   assert.equal(source.receive(sender.hello()).accepted, true);
   assert.equal(source.receive(ack).type, 'hello_ack');
 });
+
+test('Fractional browser performance.now timestamps are valid for resend cooldown', () => {
+  const [a, b] = peers({ requestCooldownMs: 35 });
+  const packets = [];
+  for (let frame = 0; frame < 8; frame++) packets.push(a.sendInput(frame, frame % 2));
+  for (const i of [0, 1, 3, 4, 5, 6, 7]) {
+    b.receive(packets[i], { currentSimFrame: 5 });
+  }
+  const req = b.makeMissingRequest(1234.56789);
+  assert.deepEqual(decodePacket(req).frames, [2]);
+  assert.equal(b.makeMissingRequest(1234.568), null);
+  assert.deepEqual(decodePacket(b.makeMissingRequest(1300.123)).frames, [2]);
+  for (const bad of [NaN, Infinity, -1, Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => b.makeMissingRequest(bad), /nowMs/);
+});

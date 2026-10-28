@@ -38,8 +38,8 @@ pub struct CiTapLatch {
 }
 pub fn read_local_inputs(`,gamePath);
 game=once(game,
-  '    frame_count: Res<FrameCount>,\n) {',
-  '    frame_count: Res<FrameCount>,\n    mut tap_latch: ResMut<CiTapLatch>,\n) {',
+  '    local_players: Res<LocalPlayers>,\n    frame_count: Res<FrameCount>,\n) {',
+  '    local_players: Res<LocalPlayers>,\n    frame_count: Res<FrameCount>,\n    mut tap_latch: ResMut<CiTapLatch>,\n) {',
   gamePath);
 game=once(game,
   '    let mut local_inputs = HashMap::new();',

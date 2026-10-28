@@ -34,6 +34,18 @@ jobs:
           git clone -q --no-tags https://github.com/johanhelsing/matchbox.git matchbox-upstream
           git -C matchbox-upstream checkout --detach "$MATCHBOX_SHA"
           test "$(git -C matchbox-upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+          # Test-only change: explicit IPv4 and two-player matchmaking room
+          # to match the already-working official Bevy example on this runner.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("matchbox-upstream/examples/simple/src/main.rs")
+          src = p.read_text()
+          old = '"ws://localhost:3536/"'
+          new = '"ws://127.0.0.1:3536/simple_example?next=2"'
+          assert src.count(old) == 1, "upstream example connection URL changed"
+          p.write_text(src.replace(old, new))
+          print("Applied test-only explicit IPv4 and next=2 room setting.")
+          PY
           awk '/^name = "wasm-bindgen"$/ {getline; print; exit}' matchbox-upstream/Cargo.lock | grep -F "$WASM_BINDGEN_VERSION"
       - name: Build original no-engine WebRTC Rust browser sample and signaling server
         shell: bash

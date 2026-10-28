@@ -1,0 +1,58 @@
+name: P0-012 official Matchbox GGRS WASM binary build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-012-wasm-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  wasm-binary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MATCHBOX_SHA: 9ed2495cd48c007f7a19e95dd5fcd64434b4879a
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout test manifest only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install stable Rust + wasm target and pin upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add wasm32-unknown-unknown
+          git clone --quiet --no-tags https://github.com/johanhelsing/matchbox.git matchbox-upstream
+          git -C matchbox-upstream checkout --detach "$MATCHBOX_SHA"
+          test "$(git -C matchbox-upstream rev-parse HEAD)" = "$MATCHBOX_SHA"
+          rustc --version
+      - name: Build official Bevy GGRS browser game to a real wasm binary
+        working-directory: matchbox-upstream
+        run: cargo build --locked --package bevy_ggrs_example --target wasm32-unknown-unknown
+      - name: Verify binary bytes, size and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=matchbox-upstream/target/wasm32-unknown-unknown/debug/bevy_ggrs_example.wasm
+          test -s "$target"
+          wc -c "$target"
+          sha256sum "$target"
+          echo "WASM binary size $(wc -c < "$target") bytes; source SHA $MATCHBOX_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "This binary is not HTML/JS bindings and has not yet been launched in Chrome." >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive reproducible WASM binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-matchbox-bevy-ggrs-wasm
+          path: matchbox-upstream/target/wasm32-unknown-unknown/debug/bevy_ggrs_example.wasm
+          if-no-files-found: error
+          retention-days: 14
+      - name: Scope
+        if: always()
+        run: |
+          echo 'This CI builds the original upstream source without SNK/KOF assets. It does not prove browser rendering, two real peers, gameplay quality, or commercial use authorization for third-party assets.' >> "$GITHUB_STEP_SUMMARY"

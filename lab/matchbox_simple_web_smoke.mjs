@@ -21,14 +21,30 @@ async function runClient(name) {
   });
   const context=await browser.newContext();
   const page=await context.newPage();
-  const events={connecting:0,joined:0,messages:0};
+  const events={connecting:0,joined:0,messages:0,wsCreated:0,wsClosed:0,wsErrors:0};
   const errors=[];
   page.on('console',msg=>{
     const text=msg.text();
     if(/Connecting to matchbox/.test(text))events.connecting++;
     if(/Peer joined:/.test(text))events.joined++;
     if(/Message from .*hello friend!/.test(text))events.messages++;
-    if(msg.type()==='error')errors.push('browser console error');
+    if(msg.type()==='error'){
+      // All signaling is localhost in this isolated CI. Preserve code/error
+      // text, not raw SDP, candidates, credentials or opaque peer IDs.
+      const safe=t=>t.replace(/[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}/gi,'[peer]')
+        .replace(/candidate:[^\\s]+/gi,'candidate:[redacted]');
+      errors.push('console:'+safe(text).slice(0,250));
+    }
+  });
+  page.on('websocket',ws=>{
+    events.wsCreated++;
+    ws.on('close',()=>events.wsClosed++);
+    ws.on('socketerror',()=>events.wsErrors++);
+  });
+  page.on('requestfailed',req=>{
+    const address=new URL(req.url());
+    if(/\\.wasm$|\\.js$/.test(address.pathname))
+      errors.push('failed resource '+address.pathname);
   });
   page.on('pageerror',err=>errors.push(err.name+':'+err.message.slice(0,100)));
   await page.goto(url,{waitUntil:'load',timeout:20000});

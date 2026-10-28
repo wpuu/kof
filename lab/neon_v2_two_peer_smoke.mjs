@@ -304,7 +304,9 @@ async function testCase(browser, { name, guestTouch }) {
         frame: window.NEON?.Game?.frame,
         phase: window.NEON?.Game?.phase,
         p1: window.NEON?.P1?.x, p2: window.NEON?.P2?.x,
-        status: document.getElementById('netstat')?.textContent?.slice(0, 140)
+        status: document.getElementById('netstat')?.textContent?.slice(0, 140),
+        voidDetail: window.NEON?.Net?.voidDetail,
+        v2Metrics: window.NEON?.Net?.v2Metrics
       })).catch(() => null);
       state.push(s);
     }

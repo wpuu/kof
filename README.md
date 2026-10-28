@@ -79,3 +79,5 @@
 - [P0-013｜同帧确定性、真实操作、丢包与约 88MB WASM 体积优化](https://github.com/wpuu/kof/issues/7)；任务已创建，未完成。
 
 - [2026-10-28/C06｜GGRS＋Matchbox 双独立 Chrome 真正输入后的同帧一致性正式 PASS](docs/2026-10-28/C06_P0_013_SAME_FRAME_PASS.md)：[CI #40674697739](https://github.com/wpuu/kof/actions/runs/40674697739)，第 180 帧 P1/P2 运动状态一致。仍不代表真实手机异网。
+
+- [C07｜GGRS＋Matchbox 双浏览器实际 0/45/90ms 延迟与 4/5 连丢四项测试 PASS](docs/2026-10-28/C07_P0_013_GGRS_IMPAIRMENT_PASS.md)：[CI #40674731228](https://github.com/wpuu/kof/actions/runs/40674731228)；同机第 180 帧状态一致、双方均真实移动，未进行跨运营商或 KOF 模拟器对照。

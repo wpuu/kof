@@ -9,7 +9,7 @@ export const MAX_PACKET_BYTES = 256;
 export const MAX_FRAME = 0x7fffffff;
 export const PacketType = Object.freeze({
   HELLO: 1, INPUT: 2, INPUT_ACK: 3, RESEND_REQUEST: 4,
-  FRAME_HASH: 5, MATCH_ABORT: 6
+  FRAME_HASH: 5, MATCH_ABORT: 6, HELLO_ACK: 7
 });
 export const AbortReason = Object.freeze({
   UNRECOVERABLE_INPUT: 1, DESYNC: 2, VERSION_MISMATCH: 3,
@@ -78,6 +78,7 @@ function bodyBytes(packet) {
       d.setUint32(4, packet.hash, true);
       return body;
     }
+    case PacketType.HELLO_ACK: return new Uint8Array(0);
     case PacketType.MATCH_ABORT: {
       if (!VALID_REASONS.has(packet.reason)) throw new RangeError('invalid abort reason');
       return Uint8Array.of(packet.reason);
@@ -159,6 +160,9 @@ export function decodePacket(raw, { expectedMatchId = null } = {}) {
       o.frame = p.getUint32(0, true);
       o.hash = p.getUint32(4, true);
       integer(o.frame, 'frame', 0, MAX_FRAME);
+      break;
+    case PacketType.HELLO_ACK:
+      need(0);
       break;
     case PacketType.MATCH_ABORT:
       need(1);

@@ -1,0 +1,81 @@
+name: P0-012 real V2 game delay-plus-loss comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-012-v2-game-stress.yml'
+      - 'lab/neon_v2_impairment_smoke.mjs'
+      - 'lab/patch_neon_v2_channels.mjs'
+      - 'src/netcode/**'
+
+permissions:
+  contents: read
+
+jobs:
+  v2-samehost-faults:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - delay: 0
+            loss: 0
+          - delay: 45
+            loss: 4
+          - delay: 90
+            loss: 4
+          - delay: 90
+            loss: 5
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    env:
+      UPSTREAM_SHA: c28ffb7e7e81ed8f9cec274772c43c30d2876d42
+      NEON_URL: http://127.0.0.1:18789/
+      V2_ONE_WAY_SEND_DELAY_MS: ${{ matrix.delay }}
+      V2_DROP_NONZERO_FRAMES: ${{ matrix.loss }}
+    steps:
+      - name: Checkout V2 lab without credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch pinned open-source game and apply V2 bridge only in CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone -q --no-tags https://github.com/developerrutu/neon-fist.git upstream
+          git -C upstream checkout --detach "$UPSTREAM_SHA"
+          test "$(git -C upstream rev-parse HEAD)" = "$UPSTREAM_SHA"
+          node --check lab/neon_v2_impairment_smoke.mjs
+          node lab/patch_neon_v2_channels.mjs upstream
+          npm ci --prefix upstream --ignore-scripts --no-audit --no-fund
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          if ! command -v google-chrome >/dev/null; then
+            npx --prefix lab playwright install chromium --with-deps
+          fi
+      - name: Run two actual game browsers with bounded synthetic V2 input faults
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd upstream && PORT=18789 node src/server/index.js) > "$RUNNER_TEMP/v2-game.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 50); do
+            if curl -fsS --max-time 2 http://127.0.0.1:18789/health >/dev/null; then
+              ready=1; break
+            fi
+            sleep 0.25
+          done
+          test "$ready" = 1
+          node lab/neon_v2_impairment_smoke.mjs
+      - name: Classify outcomes correctly
+        if: always()
+        shell: bash
+        run: |
+          echo "Synthetic per-direction INPUT send delay ${{ matrix.delay }}ms, consecutive lost host movement INPUT packets ${{ matrix.loss }}." >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS with SAFE_VOID_UNVERIFIED means no trusted result could be completed: correct fail-closed behavior, NOT playable quality. PASS with CONSISTENT is one short exact-frame sample only." >> "$GITHUB_STEP_SUMMARY"
+          echo "No real Android/iPhone, ISP NAT/TURN or KOF ROM. Commercial gaming permissions and security remain outstanding." >> "$GITHUB_STEP_SUMMARY"

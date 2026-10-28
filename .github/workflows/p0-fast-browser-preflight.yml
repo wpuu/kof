@@ -1,0 +1,35 @@
+name: P0 Fast browser harness syntax preflight
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-fast-browser-preflight.yml'
+      - 'lab/matchbox_same_frame_web_smoke.mjs'
+      - 'lab/matchbox_impairment_web_smoke.mjs'
+      - 'lab/matchbox_official_web_smoke.mjs'
+      - 'lab/patch_matchbox_state_probe.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  javascript-syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate browser test scripts before costly Rust compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check lab/matchbox_same_frame_web_smoke.mjs
+          node --check lab/matchbox_impairment_web_smoke.mjs
+          node --check lab/matchbox_official_web_smoke.mjs
+          node --check lab/patch_matchbox_state_probe.mjs
+          echo 'P0-013 test harness JavaScript syntax validated; game/rollback behavior NOT verified here.' >> "$GITHUB_STEP_SUMMARY"

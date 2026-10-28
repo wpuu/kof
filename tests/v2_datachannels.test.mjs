@@ -184,3 +184,17 @@ test('V2 no duplicate handshake ready notifications and explicit close is not ab
   a.close(); b.close();
   assert.deepEqual(aborts, { a: [], b: [] });
 });
+
+test('V2 adapter exchanges explicit HELLO_ACK on reliable control before gameplay', async () => {
+  const { a, b, ready } = await linkedSessions();
+  const aPackets = a.controlChannel.sentPackets.map(x => decodePacket(x));
+  const bPackets = b.controlChannel.sentPackets.map(x => decodePacket(x));
+  assert.ok(aPackets.some(p => p.type === PacketType.HELLO));
+  assert.ok(bPackets.some(p => p.type === PacketType.HELLO));
+  assert.ok(aPackets.some(p => p.type === PacketType.HELLO_ACK));
+  assert.ok(bPackets.some(p => p.type === PacketType.HELLO_ACK));
+  assert.equal(a.ready, true);
+  assert.equal(b.ready, true);
+  assert.deepEqual(ready, { a: 1, b: 1 });
+  a.close(); b.close();
+});

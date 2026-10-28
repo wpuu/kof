@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/p0-014g-dom-edge.yml'
       - 'lab/patch_matchbox_prediction_probe.mjs'
       - 'lab/patch_matchbox_stalled_tap_latch.mjs'
       - 'lab/patch_matchbox_dom_edge_queue.mjs'
@@ -128,7 +127,7 @@ jobs:
       - name: Download the same pinned already-compiled WASM/server
         uses: actions/download-artifact@v4
         with:
-          name: p0-014d-tap-latch-bundle
+          name: p0-014g-dom-edge-bundle
           path: ci-bundle
       - name: Verify upstream build artifact checksums (no rebuild)
         shell: bash

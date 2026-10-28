@@ -106,7 +106,10 @@ export class ReliableInputPeer {
   /** Missing input frames are only requested once a later frame is seen. */
   makeMissingRequest(nowMs = 0) {
     this.assertLive();
-    checkInt(nowMs, 'nowMs', 0, 2 ** 53 - 1);
+    // Browser performance.now() is fractional. Reject invalid/non-monotonic
+    // numeric values, but do not require integer milliseconds.
+    if (!Number.isFinite(nowMs) || nowMs < 0 || nowMs > Number.MAX_SAFE_INTEGER)
+      throw new RangeError('nowMs must be a finite nonnegative number');
     if (this.highestReceived <= this.confirmedThrough + 1) return null;
     const missing = [];
     const end = Math.min(this.highestReceived - 1, this.confirmedThrough + 32);

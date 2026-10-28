@@ -37,18 +37,34 @@ async function launch(label){
   const context=await browser.newContext({viewport:{width:960,height:640}});
   const page=await context.newPage();
   const snapshots=new Map();
-  const errors=[];
+  const errors=[], httpFailures=[];
+  let generic404Errors=0;
   let joined=false;
+  page.on('response',response=>{
+    if(response.status()<400)return;
+    // Record just path and HTTP status. Do not leak query strings/SDP.
+    httpFailures.push({status:response.status(),path:new URL(response.url()).pathname});
+  });
+  page.on('requestfailed',request=>{
+    // Network failure for a required resource is always an error.
+    const path=new URL(request.url()).pathname;
+    if(/\\.(wasm|js|ttf|png|woff2?)$/i.test(path))
+      errors.push('network request failed: '+path);
+  });
   page.on('console',msg=>{
     const txt=msg.text();
     if(/All peers have joined, going in-game/.test(txt))joined=true;
-    const found=/KOF_CI_STATE frame=(\d+) state=(\[[^\]\r\n]*\])/.exec(txt);
+    const found=/KOF_CI_STATE frame=(\\d+) state=(\\[[^\\]\\r\\n]*\\])/.exec(txt);
     if(found)snapshots.set(Number(found[1]),found[2]);
-    if(msg.type()==='error' && !/favicon.ico/.test(txt))errors.push(txt.slice(0,130));
+    if(msg.type()==='error') {
+      if(/Failed to load resource:.*404/.test(txt))generic404Errors++;
+      else errors.push(txt.slice(0,180));
+    }
   });
   page.on('pageerror',e=>errors.push(e.name+':'+e.message.slice(0,160)));
   await page.goto(url.toString(),{waitUntil:'domcontentloaded',timeout:45000});
-  return {label,browser,context,page,snapshots,errors,get joined(){return joined;}};
+  return {label,browser,context,page,snapshots,errors,httpFailures,
+    get generic404Errors(){return generic404Errors;},get joined(){return joined;}};
 }
 function maxFrame(p){return Math.max(-1,...p.snapshots.keys());}
 let a,b;
@@ -86,12 +102,25 @@ try{
   if(!p0Moved||!p1Moved)
     throw new Error('Input did not produce observable movement for both handles');
   if(!aligned)throw new Error('Same-frame P0-013 rollback component snapshot mismatch at '+frame);
-  if(a.errors.length||b.errors.length)
-    throw new Error('Browser errors: '+JSON.stringify([...a.errors,...b.errors].slice(0,4)));
+  // An absent favicon is not a gameplay failure; any missing WASM/JS/
+  // font/asset is. Generic Chrome 404 console text has no URL, so validate
+  // it against the response-level paths rather than suppressing all 404s.
+  const unexpectedFailures=[...a.httpFailures,...b.httpFailures]
+    .filter(f=>!(f.status===404&&f.path==='/favicon.ico'));
+  if(unexpectedFailures.length||a.errors.length||b.errors.length)
+    throw new Error('Required browser resource/runtime errors: '+
+      JSON.stringify({unexpectedFailures,
+        runtime:[...a.errors,...b.errors].slice(0,4)}));
   console.log(JSON.stringify({
     result:'PASS',
     checkpointFrame:frame,
     stateFingerprintMatch:true,
+    resourceDiagnostics:{
+      ignoredFavicon404:[...a.httpFailures,...b.httpFailures]
+        .filter(f=>f.status===404&&f.path==='/favicon.ico').length,
+      otherErrors:unexpectedFailures.length,
+      generic404ConsoleMessages:a.generic404Errors+b.generic404Errors
+    },
     player0ActuallyMoved:p0Moved,
     player1ActuallyMoved:p1Moved,
     verified:{player0:after[0],player1:after[1]},
@@ -107,6 +136,8 @@ try{
     console.error(JSON.stringify({label:player.label,joined:player.joined,
       lastSimFrame:maxFrame(player),sampleCount:player.snapshots.size,
       lastStates:[...player.snapshots.entries()].slice(-3),
+      httpFailures:player.httpFailures.slice(0,8),
+      generic404Errors:player.generic404Errors,
       errors:player.errors.slice(0,3)}));
   }
   process.exitCode=1;

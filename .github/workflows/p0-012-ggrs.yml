@@ -1,0 +1,45 @@
+name: P0-012 GGRS pinned rollback test suite
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/p0-012-ggrs.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GGRS_SHA: 25bd9983dee3ecb0677be03b9e2e23d2bd6d29cb
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout test controls only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Pin upstream GGRS and Rust stable toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+          git clone -q --no-tags https://github.com/gschup/ggrs.git ggrs-upstream
+          git -C ggrs-upstream checkout --detach "$GGRS_SHA"
+          test "$(git -C ggrs-upstream rev-parse HEAD)" = "$GGRS_SHA"
+          echo "Pinned GGRS source $GGRS_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Execute actual upstream GGRS rollback, P2P and sync-test suites
+        working-directory: ggrs-upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --lib --tests -- --test-threads=1
+      - name: Scope of result
+        if: always()
+        shell: bash
+        run: |
+          echo "A pass covers upstream native GGRS tests, not an actual WASM browser or cross-carrier test. The pinned source does not commit Cargo.lock; dependency versions were resolved during this run." >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,83 @@
+name: P0-014B no-loss GGRS prediction-window baseline
+
+on:
+  workflow_run:
+    workflows:
+      - "P0-014A GGRS prediction window 12-16-20 input latency A-B"
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  baseline:
+    if: github.event_name == 'workflow_run'
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        prediction_window: [12,16,20]
+        extra_send_delay: [0,90]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GGRS_EXTRA_SEND_DELAY_MS: ${{ matrix.extra_send_delay }}
+      GGRS_JITTER_MAX_MS: '0'
+      GGRS_DROP_FIRST_BURST: '0'
+      GGRS_REPETITION: '3'
+      GGRS_PREDICTION_WINDOW: ${{ matrix.prediction_window }}
+      GGRS_LATENCY_BUDGET_MS: '250'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reuse same immutable WASM from completed P0-014A (even if quality gate failed)
+        uses: actions/download-artifact@v4
+        with:
+          name: p0-014a-window-comparison-bundle
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ci-bundle
+      - name: Strict SHA256 verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd ci-bundle && sha256sum -c SHA256SUMS)
+          chmod +x ci-bundle/bin/matchbox_server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and browser harness setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          node --check lab/matchbox_no_loss_baseline.mjs
+          google-chrome --version
+      - name: Two real Chrome GGRS peers without synthetic packet loss
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci-bundle/bin/matchbox_server > "$RUNNER_TEMP/baseline-signaling.log" 2>&1 &
+          SIGNAL_PID=$!
+          python3 -m http.server 1334 --bind 127.0.0.1 --directory ci-bundle/dist > "$RUNNER_TEMP/baseline-web.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$SIGNAL_PID" "$WEB_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 75); do
+            if curl -fsS --max-time 1 http://127.0.0.1:1334/ >/dev/null &&
+               curl -fsS --max-time 1 http://127.0.0.1:3536/health >/dev/null; then
+              ok=1; break
+            fi
+            sleep 0.35
+          done
+          test "$ok" -eq 1
+          node lab/matchbox_no_loss_baseline.mjs
+      - name: Scope and quality interpretation
+        if: always()
+        shell: bash
+        run: |
+          echo "Prediction window ${{ matrix.prediction_window }}; no artificial loss; only ${{ matrix.extra_send_delay }} ms optional send delay. Reuses identical P0-014A WASM." >> "$GITHUB_STEP_SUMMARY"
+          echo "A green quality gate requires input capture/apply within 250ms AND real two-peer game-state agreement; this does not establish production gameplay latency." >> "$GITHUB_STEP_SUMMARY"

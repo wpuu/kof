@@ -74,3 +74,6 @@
 - [C02 GGRS/Matchbox 官方源码实际编译和测试证据](docs/2026-10-28/C02_GGRS_MATCHBOX_BUILD_EVIDENCE.md)
 - [C03 JS V2 与 GGRS 现阶段真实 CI 对比、时间戳/握手修复及压测结果](docs/2026-10-28/C03_V2_VS_GGRS_COMPARE_EVIDENCE.md)
 - [GitHub Issue #6：成熟架构可复现双浏览器对照](https://github.com/wpuu/kof/issues/6)
+
+- [C04｜官方 GGRS＋Matchbox 已在真正两独立 Chrome 中加载优化 WASM、自建信令并进入同一游戏](docs/2026-10-28/C04_MATCHBOX_GGRS_REAL_BROWSER_PASS.md)；**不是同帧位置/hash 或真机质量验收**。
+- [P0-013｜同帧确定性、真实操作、丢包与约 88MB WASM 体积优化](https://github.com/wpuu/kof/issues/7)；任务已创建，未完成。

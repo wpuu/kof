@@ -101,3 +101,17 @@ GitHub 执行：[Issue #7](https://github.com/wpuu/kof/issues/7) 保持 OPEN；�
 新增独立 [Issue #8：本地输入捕获后由于 GGRS 帧推进/等包调度而可能没有被应用](https://github.com/wpuu/kof/issues/8)。[C10](C10_P0_014_INPUT_STALL_DIAGNOSIS.md) 的真实诊断显示即使按键一直保持到执行，也可能有 **796ms** 的捕获→模拟应用等待，远远不能作为高品质格斗手感的依据。
 
 **下阶段从 P0-013D 转入 P0-014A：必须记录预测窗口/WaitRecommendation/长时间停帧以及输入排队生命周期，找出玩家按键延后或丢失的根因，再进行对照修复。** 原型技术路线 GGRS＋Matchbox 仍优先；公开收费/授权 KOF98/真机异网达标仍 NO-GO。
+
+---
+
+## 2026-10-28 P0-014A–G：输入等待与浏览器短按根因（本次实际施工）
+
+- **源码版本已核实**：Matchbox 固定 `Cargo.lock` 中 `ggrs 0.13.0`／`bevy_ggrs 0.22.0`；锁定 tags 的 `add_local_input` 支持“同一帧较晚输入覆盖早先输入”解释；`bevy_ggrs` 先读取再 `advance_frame`，达到 `PredictionThreshold` 不推进。这是具体代码事实，当前实例输入被吞可能还涉及浏览器不调用更新。
+- **P0-014A** [实际九次窗口对比 #40695058730](https://github.com/wpuu/kof/actions/runs/40695058730) 确认 12/16/20 帧分别 2/3、3/3、2/3 满足 250ms 宽松输入等待线。最大等待 820/24/381ms；原构建 CI #40693239358 的九项失败是 artifact 名错误，不是九场网络测试失败，已用固定二进制 replay 解决。原流程的上传下载名已修复且加 CI 静态审计。
+- **P0-014B** [六项不丢包控制 #40694770319](https://github.com/wpuu/kof/actions/runs/40694770319) 是 3 PASS、3 FAIL；没有人为丢包时也曾出现 1440ms 输入等待，说明 GHA headless/渲染调度噪声显著。
+- **P0-014C/E** [90ms+5丢包短按 #40694770306](https://github.com/wpuu/kof/actions/runs/40694770306) 和 [无人工网络故障短按 #40695528313](https://github.com/wpuu/kof/actions/runs/40695528313) 各 0/9，严格 120ms 短按多次未到 Rust `ReadInputs`；这还不能推导真实手机短按成功率。
+- **P0-014D** 单帧 OR-latch 原型完成临时 WASM 构建，但短按严格回归 [#40696002803](https://github.com/wpuu/kof/actions/runs/40696002803) 0/9：未被采集的按键不可能靠“采集后保存”来修。不得进入正式游戏。
+- **P0-014F** [浏览器事件与帧调度时间对齐 #40696771661](https://github.com/wpuu/kof/actions/runs/40696771661) 在短按被漏的样本中直接证实 DOM Canvas 确实收到 125–130ms 按下/松开，期间 timer 5–6 回、**requestAnimationFrame 0 回**，所以问题触及浏览器/Bevy 的输入轮询时机；不代表实际 Windows/iPhone 必然同样。
+- **P0-014G** 正在试验 [DOM 按键边沿队列＋Rust 接入＋单帧临时保存](https://github.com/wpuu/kof/blob/main/lab/patch_matchbox_dom_edge_queue.mjs)：目标是即使按住期间无 rAF，稍后也能把按下事件交给 GGRS；对应 [真实 CI #40697513578](https://github.com/wpuu/kof/actions/runs/40697513578) 是否成功必须按最终日志核实。初次精确源码插桩因重复锚点/转义失败，已修正，保留失败历史。**该 OR 位掩码队列不保证真正格斗按键释放/顺序，绝不可直接商用**。
+- 新增 [Artifact 名称自动预检 #40696092581](https://github.com/wpuu/kof/actions/runs/40696092581) 等成功，避免复制 GitHub CI 的“上传文件名 vs 下载文件名”错误反复导致假失败。
+- [C12 完整实测及源码依据](C12_P0_014_INPUT_LATENCY_SOURCE_AND_CI.md) 已保存，Issue [#8](https://github.com/wpuu/kof/issues/8) 保持 OPEN。**正式游戏手感、真实手机和跨运营商仍 NO-GO，尚未证明超过 Kawaks 1.45。**

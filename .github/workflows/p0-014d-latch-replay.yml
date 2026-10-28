@@ -1,0 +1,81 @@
+name: P0-014D replay experimental stalled-frame 120ms tap latch without rebuild
+
+on:
+  push:
+    paths:
+      - '.github/workflows/p0-014d-latch-replay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  replay:
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        prediction_window: [12,16,20]
+        repetition: [1,3,5]
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      GGRS_EXTRA_SEND_DELAY_MS: '90'
+      GGRS_JITTER_MAX_MS: '20'
+      GGRS_DROP_FIRST_BURST: '5'
+      GGRS_REPETITION: ${{ matrix.repetition }}
+      GGRS_PREDICTION_WINDOW: ${{ matrix.prediction_window }}
+      GGRS_LATENCY_BUDGET_MS: '250'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Reuse same immutable WASM from completed P0-014A (even if quality gate failed)
+        uses: actions/download-artifact@v4
+        with:
+          name: p0-014d-tap-latch-bundle
+          run-id: 40694773599
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ci-bundle
+      - name: Strict SHA256 verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd ci-bundle && sha256sum -c SHA256SUMS)
+          chmod +x ci-bundle/bin/matchbox_server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and browser harness setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --prefix lab --ignore-scripts --no-audit --no-fund
+          node --check lab/matchbox_short_tap_prediction_test.mjs
+          google-chrome --version
+      - name: Test 120ms real taps using same prebuilt experimental frame-latch WASM
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci-bundle/bin/matchbox_server > "$RUNNER_TEMP/baseline-signaling.log" 2>&1 &
+          SIGNAL_PID=$!
+          python3 -m http.server 1334 --bind 127.0.0.1 --directory ci-bundle/dist > "$RUNNER_TEMP/baseline-web.log" 2>&1 &
+          WEB_PID=$!
+          trap 'kill "$SIGNAL_PID" "$WEB_PID" 2>/dev/null || true' EXIT
+          ok=0
+          for i in $(seq 1 75); do
+            if curl -fsS --max-time 1 http://127.0.0.1:1334/ >/dev/null &&
+               curl -fsS --max-time 1 http://127.0.0.1:3536/health >/dev/null; then
+              ok=1; break
+            fi
+            sleep 0.35
+          done
+          test "$ok" -eq 1
+          node lab/matchbox_short_tap_prediction_test.mjs
+      - name: Scope and quality interpretation
+        if: always()
+        shell: bash
+        run: |
+          echo "Experimental input-latch WASM prediction window ${{ matrix.prediction_window }}, seed ${{ matrix.repetition }}; physical 120ms key tap, 90ms +/-20ms artificial send delay, 5 dropped sends after nonzero input capture." >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS means actual 120ms physical key taps were sampled and applied by both simulated player handles, same-frame state matched and local latency <=250ms. The OR-mask latch is only a diagnostic prototype, not production fighting input logic." >> "$GITHUB_STEP_SUMMARY"
